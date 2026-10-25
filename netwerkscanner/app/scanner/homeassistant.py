@@ -4,17 +4,32 @@ from __future__ import annotations
 
 import logging
 import os
+from pathlib import Path
 
 import requests
 
 log = logging.getLogger(__name__)
+
+# s6-overlay start CMD met een schone omgeving; de echte variabelen staan hier.
+S6_ENV_DIR = Path("/run/s6/container_environment")
+
+
+def supervisor_token(env_dir: Path = S6_ENV_DIR) -> str:
+    token = os.environ.get("SUPERVISOR_TOKEN")
+    if token:
+        return token
+    try:
+        return (env_dir / "SUPERVISOR_TOKEN").read_text().strip()
+    except OSError:
+        log.error("Geen SUPERVISOR_TOKEN gevonden: meldingen en sensoren werken niet")
+        return ""
 
 
 class HomeAssistant:
     def __init__(self, base_url: str = "http://supervisor/core/api", token: str | None = None):
         self.base_url = base_url
         self.session = requests.Session()
-        self.session.headers["Authorization"] = f"Bearer {token or os.environ.get('SUPERVISOR_TOKEN', '')}"
+        self.session.headers["Authorization"] = f"Bearer {token or supervisor_token()}"
 
     def call_service(self, service: str, data: dict) -> bool:
         domain, _, name = service.partition(".")
