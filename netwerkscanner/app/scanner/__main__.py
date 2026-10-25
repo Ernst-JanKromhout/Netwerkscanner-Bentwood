@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import queue
 import threading
 import time
@@ -163,10 +164,20 @@ class Scanner:
         return next_daily(now, self.cfg.report_time)
 
 
+def use_home_assistant_time_zone() -> None:
+    """De container draait in UTC; neem de tijdzone van HA over voor rapport- en scantijden."""
+    tz = HomeAssistant().time_zone()
+    if tz:
+        os.environ["TZ"] = tz
+        time.tzset()
+
+
 def main() -> None:
     cfg = Config.load()
     logging.basicConfig(level=cfg.log_level.upper(), format="%(asctime)s %(levelname)s %(name)s: %(message)s")
-    log.info("Netwerkscanner start, subnetten: %s", ", ".join(cfg.subnets) or "geen")
+    use_home_assistant_time_zone()
+    log.info("Netwerkscanner start, tijdzone %s, subnetten: %s",
+             os.environ.get("TZ", "UTC"), ", ".join(cfg.subnets) or "geen")
     Scanner(cfg).run()
 
 

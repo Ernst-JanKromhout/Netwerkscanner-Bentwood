@@ -42,6 +42,16 @@ class HomeAssistant:
             {"notification_id": notification_id, "title": title, "message": message},
         )
 
+    def time_zone(self) -> str | None:
+        """Tijdzone uit de HA-configuratie, bijvoorbeeld 'Europe/Amsterdam'."""
+        try:
+            resp = self.session.get(f"{self.base_url}/config", timeout=15)
+            resp.raise_for_status()
+            return resp.json().get("time_zone")
+        except (requests.RequestException, ValueError) as exc:
+            log.warning("Tijdzone ophalen mislukt: %s", exc)
+            return None
+
     def set_sensor(self, entity_id: str, state, attributes: dict) -> None:
         try:
             resp = self.session.post(
