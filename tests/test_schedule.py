@@ -19,3 +19,18 @@ def test_config_from_options():
     cfg = Config.from_dict({"report_time": "07:30", "trusted_macs": ["AA-BB-CC-DD-EE-FF"], "onbekend": 1})
     assert cfg.report_time == time(7, 30)
     assert cfg.trusted_macs == {"aa:bb:cc:dd:ee:ff"}
+
+
+def test_time_zone_from_home_assistant():
+    from scanner.homeassistant import HomeAssistant
+
+    class Resp:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"time_zone": "Europe/Amsterdam"}
+
+    ha = HomeAssistant(token="x")
+    ha.session.get = lambda url, timeout: Resp()
+    assert ha.time_zone() == "Europe/Amsterdam"
