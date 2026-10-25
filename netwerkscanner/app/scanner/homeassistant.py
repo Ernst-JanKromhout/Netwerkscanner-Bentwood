@@ -41,18 +41,18 @@ class HomeAssistant:
             log.warning("Service %s mislukt: %s", service, exc)
             return False
 
-    def notify(self, services: list[str], title: str, message: str, actions: list[dict] | None = None) -> bool:
+    def notify(self, services: list[str], title: str, message: str, url: str | None = None) -> bool:
         """Stuurt naar elke dienst; geslaagd als er minstens één aankwam.
 
-        Knoppen (`actions`) gaan alleen mee naar de HA-app (notify.mobile_app_*).
+        `url` gaat alleen mee naar de HA-app (notify.mobile_app_*): tikken op de melding opent die pagina.
         """
         delivered = False
         for service in services:
             data = {"title": title, "message": message}
             if service.startswith("telegram_bot."):
                 data["parse_mode"] = "plain_text"
-            if actions and service.startswith("notify.mobile_app_"):
-                data["data"] = {"actions": actions}
+            if url and service.startswith("notify.mobile_app_"):
+                data["data"] = {"url": url, "clickAction": url}
             delivered = self.call_service(service, data) or delivered
         return delivered
 

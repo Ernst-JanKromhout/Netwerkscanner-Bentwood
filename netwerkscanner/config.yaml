@@ -1,5 +1,5 @@
 name: Netwerkscanner
-version: "0.1.3"
+version: "0.1.4"
 slug: netwerkscanner
 description: Scant het thuisnetwerk, houdt historie bij en meldt nieuwe apparaten en poorten.
 url: https://github.com/Ernst-JanKromhout/Netwerkscanner-Bentwood
@@ -22,6 +22,7 @@ options:
   unifi_verify_ssl: false
   subnets: []
   notify_services: []
+  dashboard_path: /beveiliging/netwerk
   trusted_macs: []
   unifi_interval_seconds: 60
   ping_interval_minutes: 15
@@ -42,6 +43,7 @@ schema:
     - str
   notify_services:
     - str
+  dashboard_path: str
   trusted_macs:
     - str
   unifi_interval_seconds: int(30,3600)

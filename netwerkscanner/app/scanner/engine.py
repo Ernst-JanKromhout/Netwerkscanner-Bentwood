@@ -80,7 +80,7 @@ class Engine:
                 if detail["random_mac"]:
                     lines.append("Willekeurig (privé) MAC-adres: mogelijk een bekende telefoon met een nieuw adres.")
                 lines.append("Poortscan is gestart.")
-                self._push(event_id, "Nieuw apparaat op je netwerk", "\n".join(lines), s.mac)
+                self._push(event_id, "Nieuw apparaat op je netwerk", "\n".join(lines))
             return True
 
         changes: list[Change] = diff_identity(existing["ip"], existing["hostname"], s.ip, s.hostname)
@@ -135,15 +135,15 @@ class Engine:
             if change.type == "port_opened" and device is not None and not device["trusted"]:
                 d = change.detail
                 service = " ".join(v for v in (d["service"], d["version"]) if v) or "onbekende dienst"
-                self._push(event_id, "Nieuwe open poort", mac=mac, message=
+                self._push(event_id, "Nieuwe open poort",
                            f"{describe(device)}\nPoort {d['port']}/{d['proto']}: {service}")
 
-    def _push(self, event_id: int, title: str, message: str, mac: str) -> None:
-        actions = [
-            {"action": f"NWS_APPROVE_{mac}", "title": "Goedkeuren"},
-            {"action": f"NWS_REJECT_{mac}", "title": "Afkeuren"},
-        ]
-        if self.ha.notify(self.cfg.notify_services, title, message, actions):
+    def _push(self, event_id: int, title: str, message: str) -> None:
+        url = self.cfg.dashboard_path
+        self.ha.persistent_notification(f"netwerkscanner_{event_id}", title,
+                                        f"{message}\n\n[Open het dashboard Beveiliging]({url})")
+        message += "\nBeoordeel het in het dashboard Beveiliging."
+        if self.ha.notify(self.cfg.notify_services, title, message, url):
             self.db.mark_notified(event_id)
 
     # beoordelen

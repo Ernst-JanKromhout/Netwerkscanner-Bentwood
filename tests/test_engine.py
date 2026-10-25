@@ -15,8 +15,12 @@ class FakeHA:
     def __init__(self):
         self.pushes = []
 
-    def notify(self, services, title, message, actions=None):
-        self.pushes.append((title, message, actions))
+    def notify(self, services, title, message, url=None):
+        self.pushes.append((title, message, url))
+        return True
+
+    def persistent_notification(self, notification_id, title, message):
+        self.notifications = getattr(self, "notifications", []) + [(notification_id, message)]
         return True
 
 
