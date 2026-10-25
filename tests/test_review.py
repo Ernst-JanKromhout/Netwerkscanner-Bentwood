@@ -50,11 +50,11 @@ def test_parse_push_and_dashboard_events():
 def test_push_links_to_dashboard(tmp_path):
     _, _, ha = setup(tmp_path)
     title, message, url = ha.pushes[0]
-    assert url == "/dashboard-beveiliging/netwerk"
-    assert "dashboard Beveiliging" in message
+    assert url == "/dashboard-netwerk/overzicht"
+    assert "dashboard Netwerk" in message
     notification_id, text = ha.notifications[0]
     assert notification_id.startswith("netwerkscanner_")
-    assert "(/dashboard-beveiliging/netwerk)" in text
+    assert "(/dashboard-netwerk/overzicht)" in text
 
 
 def test_approve_and_reject(tmp_path):
