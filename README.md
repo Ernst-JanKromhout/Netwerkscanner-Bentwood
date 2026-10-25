@@ -8,8 +8,9 @@ Wat de add-on precies doet en welke opties er zijn, staat in [netwerkscanner/DOC
 
 ## Installeren
 
-Reken op een kwartier. Je hebt nodig: beheerrechten in UniFi en in Home Assistant, het IP-adres van
-je UniFi-controller en het IP-adres van je Home Assistant.
+Reken op een half uur. Je hebt nodig: Home Assistant OS op een 64-bit apparaat (bijvoorbeeld een
+Raspberry Pi 4/5, ODROID of mini-pc), beheerrechten in Home Assistant, en als je UniFi hebt: beheerrechten
+daar en het IP-adres van je UniFi-controller. UniFi is niet verplicht, zie [Zonder UniFi](#zonder-unifi).
 
 ### 1. UniFi-account met alleen leesrechten
 
@@ -67,6 +68,36 @@ Scan top van <ip> klaar in <n> s
 
 Bij de eerste start legt de scanner alle aanwezige apparaten vast als beginsituatie, zonder
 meldingen. Daarna scant hij ze een voor een op de achtergrond.
+
+### 6. Dashboard toevoegen
+
+De add-on vult de sensoren zelf, maar het dashboard en de knoppen zet je eenmalig met de hand in
+Home Assistant. De tekst om te plakken staat in de map [`dashboard/`](dashboard/).
+
+1. **Keuzelijst.** Ga naar **Instellingen → Apparaten & diensten → Helpers → Helper aanmaken → Dropdown**.
+   Naam: `Netwerkscanner te beoordelen`, één optie: `Niets te beoordelen`. Controleer dat de entiteit
+   `input_select.netwerkscanner_te_beoordelen` heet. De add-on vult de lijst daarna zelf.
+2. **Drie scripts.** Ga naar **Instellingen → Automatiseringen en scènes → Scripts → Script toevoegen →
+   Nieuw script maken → ⋮ → Bewerken in YAML**. Plak het eerste blok uit
+   [`dashboard/scripts.yaml`](dashboard/scripts.yaml) en sla op. Herhaal dat voor de andere twee.
+   De entiteiten moeten `script.netwerkscanner_goedkeuren`, `script.netwerkscanner_afkeuren` en
+   `script.netwerkscanner_alles_goedkeuren` heten. Klopt een naam niet, pas hem dan aan via het tandwiel van het script.
+3. **Dashboard.** Ga naar **Instellingen → Dashboards → Dashboard toevoegen → Nieuw dashboard vanaf nul**
+   en noem het `Netwerk`. Open het, klik op het potlood, dan **⋮ → Ruwe configuratie-editor**, vervang alles door
+   de inhoud van [`dashboard/dashboard.yaml`](dashboard/dashboard.yaml) en sla op.
+
+Tik je op een pushmelding, dan opent de HA-app `/dashboard-netwerk/overzicht`. Heeft je dashboard een ander
+adres, pas dan de optie `dashboard_path` aan.
+
+Eerste keer: alle apparaten staan op *te beoordelen*. Loop de lijst door, keur af wat je niet kent en
+druk dan op **Alle openstaande goedkeuren**. Dat is je beginsituatie.
+
+## Zonder UniFi
+
+Laat `unifi_host`, `unifi_username` en `unifi_password` leeg. De scanner werkt dan alleen met nmap:
+apparaten worden gevonden via de ping-sweep en namen komen uit DNS. Je ziet minder namen en fabrikanten.
+Sla stap 1 en 2 dan over, maar zet een eventuele IDS/IPS van je eigen router wel op een uitzondering
+voor het IP van Home Assistant.
 
 ## Bijwerken
 
