@@ -13,9 +13,11 @@ from . import nmap
 from .config import DB_PATH, Config
 from .db import Database, iso, utcnow
 from .engine import Engine, Sighting
+from .ha_events import EventListener
 from .homeassistant import HomeAssistant
-from .overview import devices, recent_changes
+from .overview import publish
 from .report import build_report, build_summary
+from .review import parse
 from .schedule import next_daily, nightly_kind
 from .unifi import UniFiClient
 
@@ -64,6 +66,7 @@ class Scanner:
         self.worker = ScanWorker(cfg, self.ha)
         self.engine = Engine(self.db, cfg, self.ha, self.worker.request)
         self.unifi = UniFiClient(cfg) if cfg.unifi_enabled else None
+        self._event_db: Database | None = None
 
     def poll_unifi(self) -> None:
         clients = self.unifi.active_clients()
@@ -102,27 +105,24 @@ class Scanner:
         log.info("Dagrapport verstuurd met %d gebeurtenissen", count)
 
     def update_sensors(self) -> None:
-        midnight = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-        today = self.db.events_between(iso(midnight.astimezone()), iso(utcnow() + timedelta(seconds=1)))
-        online = self.db.conn.execute("SELECT COUNT(*) FROM devices WHERE present = 1").fetchone()[0]
-        known = self.db.device_count()
-        self.ha.set_sensor("sensor.netwerkscanner_apparaten_online", online,
-                           {"friendly_name": "Netwerk: apparaten online", "unit_of_measurement": "apparaten",
-                            "icon": "mdi:lan", "bekend_totaal": known})
-        self.ha.set_sensor("sensor.netwerkscanner_gebeurtenissen_vandaag", len(today),
-                           {"friendly_name": "Netwerk: wijzigingen vandaag", "unit_of_measurement": "wijzigingen",
-                            "icon": "mdi:lan-pending"})
-        self.ha.set_sensor("sensor.netwerkscanner_apparaten", known,
-                           {"friendly_name": "Netwerk: apparaten", "unit_of_measurement": "apparaten",
-                            "icon": "mdi:devices", "apparaten": devices(self.db)})
-        changes = recent_changes(self.db)
-        self.ha.set_sensor("sensor.netwerkscanner_laatste_wijzigingen", changes[0]["tijd"] if changes else "geen",
-                           {"friendly_name": "Netwerk: laatste wijzigingen", "icon": "mdi:history",
-                            "wijzigingen": changes})
+        publish(self.db, self.ha)
+
+    def on_ha_event(self, event_type: str, data: dict) -> None:
+        """Draait in de websocket-thread, dus met een eigen databaseverbinding."""
+        parsed = parse(event_type, data)
+        if parsed is None:
+            return
+        action, mac = parsed
+        if self._event_db is None:
+            self._event_db = Database(DB_PATH)
+        count = Engine(self._event_db, self.cfg, self.ha).review(action, mac)
+        log.info("Beoordeling %s voor %s: %d apparaat/apparaten", action, mac or "alle openstaande", count)
+        publish(self._event_db, self.ha)
 
     def run(self) -> None:
         self.db.set_trusted(self.cfg.trusted_macs)
         self.worker.start()
+        EventListener(self.on_ha_event).start()
         now = datetime.now()
         due = {
             "unifi": now,

@@ -10,7 +10,7 @@ T0 = datetime(2026, 10, 25, 12, 0, tzinfo=timezone.utc)
 
 
 class FakeHA:
-    def notify(self, services, title, message):
+    def notify(self, services, title, message, actions=None):
         return True
 
 

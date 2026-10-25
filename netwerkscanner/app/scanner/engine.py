@@ -80,7 +80,7 @@ class Engine:
                 if detail["random_mac"]:
                     lines.append("Willekeurig (privé) MAC-adres: mogelijk een bekende telefoon met een nieuw adres.")
                 lines.append("Poortscan is gestart.")
-                self._push(event_id, "Nieuw apparaat op je netwerk", "\n".join(lines))
+                self._push(event_id, "Nieuw apparaat op je netwerk", "\n".join(lines), s.mac)
             return True
 
         changes: list[Change] = diff_identity(existing["ip"], existing["hostname"], s.ip, s.hostname)
@@ -135,9 +135,33 @@ class Engine:
             if change.type == "port_opened" and device is not None and not device["trusted"]:
                 d = change.detail
                 service = " ".join(v for v in (d["service"], d["version"]) if v) or "onbekende dienst"
-                self._push(event_id, "Nieuwe open poort",
+                self._push(event_id, "Nieuwe open poort", mac=mac, message=
                            f"{describe(device)}\nPoort {d['port']}/{d['proto']}: {service}")
 
-    def _push(self, event_id: int, title: str, message: str) -> None:
-        if self.ha.notify(self.cfg.notify_services, title, message):
+    def _push(self, event_id: int, title: str, message: str, mac: str) -> None:
+        actions = [
+            {"action": f"NWS_APPROVE_{mac}", "title": "Goedkeuren"},
+            {"action": f"NWS_REJECT_{mac}", "title": "Afkeuren"},
+        ]
+        if self.ha.notify(self.cfg.notify_services, title, message, actions):
             self.db.mark_notified(event_id)
+
+    # beoordelen
+
+    def review(self, action: str, mac: str | None, now: datetime | None = None) -> int:
+        """Keurt een apparaat (of met 'approve_all' alle openstaande) goed of af. Geeft het aantal terug."""
+        ts = iso(now or utcnow())
+        if action == "approve_all":
+            macs = [d["mac"] for d in self.db.pending_devices()]
+            review = "approved"
+        elif action in ("approve", "reject") and mac:
+            macs = [mac]
+            review = "approved" if action == "approve" else "rejected"
+        else:
+            return 0
+        done = 0
+        for m in macs:
+            if self.db.set_review(m, review):
+                self.db.add_event(ts, review, m, {"ip": self.db.device(m)["ip"]})
+                done += 1
+        return done

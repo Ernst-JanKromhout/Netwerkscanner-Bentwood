@@ -33,7 +33,30 @@ Sensoren:
 | `sensor.netwerkscanner_apparaten` | bekende apparaten | `apparaten`: naam, IP, MAC, online, vertrouwd, open poorten |
 | `sensor.netwerkscanner_laatste_wijzigingen` | tijd van de laatste wijziging | `wijzigingen`: de laatste 25, nieuwste eerst |
 
-De attributen van de laatste twee zijn bedoeld voor een dashboard, bijvoorbeeld met een Markdown-kaart.
+Ook `sensor.netwerkscanner_te_beoordelen`: het aantal apparaten dat nog niet is goed- of afgekeurd.
+
+## Goedkeuren en afkeuren
+
+Elke pushmelding via de HA-app heeft de knoppen **Goedkeuren** en **Afkeuren**.
+
+- **Goedkeuren**: het apparaat telt als vertrouwd. Nieuwe poorten op dat apparaat zie je alleen nog in het dagrapport.
+- **Afkeuren**: het apparaat blijft gevolgd. Zolang het online is, staat het bovenaan het dagrapport.
+  Afkeuren blokkeert het apparaat niet; dat doe je zelf in UniFi.
+
+Vanuit een dashboard gaat het via de keuzelijst `input_select.netwerkscanner_te_beoordelen`, die de add-on
+vult met openstaande apparaten. Een script vuurt dan het event `netwerkscanner_review` af met
+`action` (`approve`, `reject` of `approve_all`) en `device` (de gekozen optie):
+
+```yaml
+sequence:
+  - event: netwerkscanner_review
+    event_data:
+      action: approve
+      device: "{{ states('input_select.netwerkscanner_te_beoordelen') }}"
+```
+
+Maak de keuzelijst eenmalig aan als helper (*Instellingen → Apparaten & diensten → Helpers*) met
+één optie, bijvoorbeeld `Niets te beoordelen`. De add-on vult hem daarna zelf.
 
 ## Instellen
 

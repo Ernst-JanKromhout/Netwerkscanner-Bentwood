@@ -41,13 +41,18 @@ class HomeAssistant:
             log.warning("Service %s mislukt: %s", service, exc)
             return False
 
-    def notify(self, services: list[str], title: str, message: str) -> bool:
-        """Stuurt naar elke dienst; geslaagd als er minstens één aankwam."""
+    def notify(self, services: list[str], title: str, message: str, actions: list[dict] | None = None) -> bool:
+        """Stuurt naar elke dienst; geslaagd als er minstens één aankwam.
+
+        Knoppen (`actions`) gaan alleen mee naar de HA-app (notify.mobile_app_*).
+        """
         delivered = False
         for service in services:
             data = {"title": title, "message": message}
             if service.startswith("telegram_bot."):
                 data["parse_mode"] = "plain_text"
+            if actions and service.startswith("notify.mobile_app_"):
+                data["data"] = {"actions": actions}
             delivered = self.call_service(service, data) or delivered
         return delivered
 
@@ -56,6 +61,9 @@ class HomeAssistant:
             "persistent_notification.create",
             {"notification_id": notification_id, "title": title, "message": message},
         )
+
+    def set_select_options(self, entity_id: str, options: list[str]) -> bool:
+        return self.call_service("input_select.set_options", {"entity_id": entity_id, "options": options})
 
     def time_zone(self) -> str | None:
         """Tijdzone uit de HA-configuratie, bijvoorbeeld 'Europe/Amsterdam'."""

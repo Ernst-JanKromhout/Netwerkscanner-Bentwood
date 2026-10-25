@@ -69,7 +69,8 @@ def _run(args: list[str], timeout: int) -> tuple[list[Host], float]:
 
 
 def ping_sweep(subnets: list[str]) -> list[Host]:
-    hosts, _ = _run(["-sn", "-n", *subnets], timeout=600)
+    """Zonder -n: de DNS van de gateway geeft dan ook de hostnamen van apparaten terug."""
+    hosts, _ = _run(["-sn", *subnets], timeout=600)
     return [h for h in hosts if h.up]
 
 
