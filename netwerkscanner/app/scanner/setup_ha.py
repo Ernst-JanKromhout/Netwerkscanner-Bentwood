@@ -9,12 +9,20 @@ import json
 import logging
 
 from .homeassistant import HomeAssistant, supervisor_token
-from .review import NOTHING_PENDING, SELECT_ENTITY
+from .review import NAME_SELECT, NAME_TEXT, NOTHING_PENDING, SELECT_ENTITY
 
 log = logging.getLogger(__name__)
 
 WS_URL = "ws://supervisor/core/websocket"
-HELPER_NAME = "Netwerkscanner te beoordelen"
+# (entiteit, websocket-commando, gegevens); de naam bepaalt de entity_id.
+HELPERS = [
+    (SELECT_ENTITY, "input_select/create",
+     {"name": "Netwerkscanner te beoordelen", "options": [NOTHING_PENDING], "icon": "mdi:shield-search"}),
+    (NAME_SELECT, "input_select/create",
+     {"name": "Netwerkscanner apparaat", "options": [NOTHING_PENDING], "icon": "mdi:devices"}),
+    (NAME_TEXT, "input_text/create",
+     {"name": "Netwerkscanner naam", "max": 100, "icon": "mdi:rename"}),
+]
 
 SCRIPTS = {
     "netwerkscanner_goedkeuren": {
@@ -42,6 +50,26 @@ SCRIPTS = {
                     "action": "reject",
                     "device": "{{ states('input_select.netwerkscanner_te_beoordelen') }}"
                 }
+            }
+        ]
+    },
+    "netwerkscanner_naam_geven": {
+        "alias": "Netwerkscanner: naam geven",
+        "icon": "mdi:rename",
+        "mode": "single",
+        "sequence": [
+            {
+                "event": "netwerkscanner_review",
+                "event_data": {
+                    "action": "rename",
+                    "device": "{{ states('input_select.netwerkscanner_apparaat') }}",
+                    "name": "{{ states('input_text.netwerkscanner_naam') }}"
+                }
+            },
+            {
+                "action": "input_text.set_value",
+                "target": {"entity_id": "input_text.netwerkscanner_naam"},
+                "data": {"value": ""}
             }
         ]
     },
@@ -133,6 +161,23 @@ SECTIONS = [
                     "columns": 12,
                     "rows": 1
                 }
+            },
+            {"type": "heading", "heading": "Naam geven", "icon": "mdi:rename"},
+            {
+                "type": "entities",
+                "entities": [
+                    {"entity": "input_select.netwerkscanner_apparaat", "name": "Apparaat"},
+                    {"entity": "input_text.netwerkscanner_naam", "name": "Nieuwe naam"}
+                ],
+                "grid_options": {"columns": 12}
+            },
+            {
+                "type": "button",
+                "name": "Naam opslaan",
+                "icon": "mdi:content-save",
+                "show_state": False,
+                "tap_action": {"action": "perform-action", "perform_action": "script.netwerkscanner_naam_geven"},
+                "grid_options": {"columns": 12, "rows": 1}
             },
             {
                 "type": "heading",
@@ -257,9 +302,10 @@ def ensure(ha: HomeAssistant, dashboard_path: str, ws_factory=WebSocket) -> list
     url_path, view_path = split_path(dashboard_path)
     ws = ws_factory()
     try:
-        if ha.state(SELECT_ENTITY) is None:
-            ws.call("input_select/create", name=HELPER_NAME, options=[NOTHING_PENDING], icon="mdi:shield-search")
-            created.append(SELECT_ENTITY)
+        for entity_id, command, data in HELPERS:
+            if ha.state(entity_id) is None:
+                ws.call(command, **data)
+                created.append(entity_id)
         if "-" not in url_path:
             log.warning("dashboard_path %s: het eerste deel moet een koppelteken hebben, dashboard niet aangemaakt",
                         dashboard_path)

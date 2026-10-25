@@ -60,6 +60,13 @@ sequence:
 De add-on maakt de keuzelijst, de scripts en het dashboard bij de start zelf aan als ze ontbreken
 (optie `create_dashboard`). Bestaande versies worden nooit overschreven.
 
+## Zelf een naam geven
+
+Kies op het dashboard onder **Naam geven** een apparaat, typ een naam en druk op **Naam opslaan**.
+Die naam gaat voor alles: de naam uit UniFi, de hostnaam en de fabrikant. Hij blijft staan als het apparaat
+later een ander IP of een andere hostnaam krijgt. Sla je een lege naam op, dan komt de oude naam terug.
+In het dagrapport staat de wijziging onder *Zelf hernoemd*.
+
 ## Instellen
 
 1. Maak in UniFi een lokaal account met alleen leesrechten en vul `unifi_username` en `unifi_password` in.

@@ -112,10 +112,10 @@ class Scanner:
         parsed = parse(event_type, data)
         if parsed is None:
             return
-        action, mac = parsed
+        action, mac, name = parsed
         if self._event_db is None:
             self._event_db = Database(DB_PATH)
-        count = Engine(self._event_db, self.cfg, self.ha).review(action, mac)
+        count = Engine(self._event_db, self.cfg, self.ha).review(action, mac, name=name)
         log.info("Beoordeling %s voor %s: %d apparaat/apparaten", action, mac or "alle openstaande", count)
         publish(self._event_db, self.ha)
 

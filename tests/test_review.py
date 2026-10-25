@@ -1,11 +1,11 @@
 from datetime import datetime, timezone
 
 from scanner.config import Config
-from scanner.db import Database
+from scanner.db import Database, label
 from scanner.engine import Engine, Sighting
 from scanner.overview import devices, publish
 from scanner.report import build_report
-from scanner.review import NOTHING_PENDING, SELECT_ENTITY, parse
+from scanner.review import NOTHING_PENDING, SELECT_ENTITY, option_label, parse
 
 T0 = datetime(2026, 10, 25, 12, 0, tzinfo=timezone.utc)
 NAS, CAM = "00:11:32:00:00:01", "da:a1:19:00:00:05"
@@ -42,9 +42,11 @@ def setup(tmp_path, trusted=()):
 
 def test_parse_push_and_dashboard_events():
     assert parse("mobile_app_notification_action", {"action": f"NWS_APPROVE_{CAM}"}) is None
-    assert parse("netwerkscanner_review", {"action": "reject", "device": f"camera (192.168.1.40) {CAM}"}) == ("reject", CAM)
+    assert parse("netwerkscanner_review", {"action": "reject", "device": f"camera (192.168.1.40) {CAM}"}) == ("reject", CAM, None)
     assert parse("netwerkscanner_review", {"action": "approve", "device": NOTHING_PENDING}) is None
-    assert parse("netwerkscanner_review", {"action": "approve_all"}) == ("approve_all", None)
+    assert parse("netwerkscanner_review", {"action": "approve_all"}) == ("approve_all", None, None)
+    assert parse("netwerkscanner_review", {"action": "rename", "device": f"x (1.2.3.4) {CAM}", "name": " Tv woonkamer "}) == (
+        "rename", CAM, "Tv woonkamer")
 
 
 def test_push_links_to_dashboard(tmp_path):
@@ -98,3 +100,21 @@ def test_publish_fills_select_with_pending(tmp_path):
     engine.review("approve_all", None, T0)
     publish(db, ha)
     assert ha.selects[SELECT_ENTITY] == [NOTHING_PENDING]
+
+
+def test_rename_sets_alias_everywhere(tmp_path):
+    db, engine, _ = setup(tmp_path)
+    assert engine.review("rename", CAM, T0, name="Tv woonkamer") == 1
+    assert label(db.device(CAM)) == "Tv woonkamer"
+    assert option_label(db.device(CAM)).startswith("Tv woonkamer (")
+    event = db.recent_events(1)[0]
+    assert event["type"] == "renamed"
+    engine.review("rename", CAM, T0, name="")
+    assert db.device(CAM)["alias"] is None
+
+
+def test_rename_survives_new_sighting(tmp_path):
+    db, engine, _ = setup(tmp_path)
+    engine.review("rename", CAM, T0, name="Tv woonkamer")
+    engine.handle_sightings([Sighting(CAM, "192.168.30.40", "camera", name="UniFi-naam")], "unifi", T0)
+    assert label(db.device(CAM)) == "Tv woonkamer"

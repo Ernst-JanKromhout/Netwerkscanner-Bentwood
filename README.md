@@ -75,7 +75,9 @@ Dat doet de add-on zelf. Bij de start maakt hij in Home Assistant aan wat nog on
 
 - het dashboard **Netwerk** in de zijbalk (`/dashboard-netwerk/overzicht`),
 - de keuzelijst `input_select.netwerkscanner_te_beoordelen`,
-- de scripts voor **Goedkeuren**, **Afkeuren** en **Alle openstaande goedkeuren**.
+- de keuzelijst `input_select.netwerkscanner_apparaat` en het tekstveld `input_text.netwerkscanner_naam`
+  om apparaten zelf een naam te geven,
+- de scripts voor **Goedkeuren**, **Afkeuren**, **Alle openstaande goedkeuren** en **Naam opslaan**.
 
 In het logboek zie je dan `Aangemaakt in Home Assistant: ...`. Ververs de pagina (F5) om het dashboard in de
 zijbalk te zien. Bestaat iets al, dan laat de add-on het met rust, dus je eigen aanpassingen blijven staan.

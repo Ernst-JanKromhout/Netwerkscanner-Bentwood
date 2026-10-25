@@ -1,5 +1,4 @@
 from scanner import setup_ha
-from scanner.review import SELECT_ENTITY
 
 
 class FakeHA:
@@ -34,16 +33,16 @@ def test_creates_everything_when_missing():
     created = setup_ha.ensure(ha, "/dashboard-netwerk/overzicht", lambda: ws)
     assert set(ha.scripts) == set(setup_ha.SCRIPTS)
     types = [t for t, _ in ws.calls]
-    assert types == ["input_select/create", "lovelace/dashboards/list",
+    assert types == ["input_select/create", "input_select/create", "input_text/create", "lovelace/dashboards/list",
                      "lovelace/dashboards/create", "lovelace/config/save"]
-    assert ws.calls[2][1]["url_path"] == "dashboard-netwerk"
-    assert ws.calls[3][1]["config"]["views"][0]["path"] == "overzicht"
+    assert ws.calls[4][1]["url_path"] == "dashboard-netwerk"
+    assert ws.calls[5][1]["config"]["views"][0]["path"] == "overzicht"
     assert "dashboard /dashboard-netwerk/overzicht" in created
     assert ws.closed
 
 
 def test_leaves_existing_alone():
-    existing = [SELECT_ENTITY] + [f"script.{s}" for s in setup_ha.SCRIPTS]
+    existing = [e for e, _, _ in setup_ha.HELPERS] + [f"script.{s}" for s in setup_ha.SCRIPTS]
     ha, ws = FakeHA(existing), FakeWS(["dashboard-netwerk"])
     assert setup_ha.ensure(ha, "/dashboard-netwerk/overzicht", lambda: ws) == []
     assert ha.scripts == {}
@@ -51,7 +50,7 @@ def test_leaves_existing_alone():
 
 
 def test_dashboard_path_without_hyphen_is_skipped():
-    existing = [SELECT_ENTITY] + [f"script.{s}" for s in setup_ha.SCRIPTS]
+    existing = [e for e, _, _ in setup_ha.HELPERS] + [f"script.{s}" for s in setup_ha.SCRIPTS]
     ws = FakeWS()
     assert setup_ha.ensure(FakeHA(existing), "/netwerk", lambda: ws) == []
     assert ws.calls == []
