@@ -15,8 +15,8 @@ class FakeHA:
     def __init__(self):
         self.pushes = []
 
-    def notify(self, services, title, message):
-        self.pushes.append((title, message))
+    def notify(self, services, title, message, actions=None):
+        self.pushes.append((title, message, actions))
         return True
 
 

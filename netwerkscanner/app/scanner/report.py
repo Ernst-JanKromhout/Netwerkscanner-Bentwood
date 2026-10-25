@@ -8,6 +8,8 @@ from .db import Database
 
 SECTIONS = [
     ("new_device", "Nieuwe apparaten"),
+    ("rejected", "Afgekeurd"),
+    ("approved", "Goedgekeurd"),
     ("port_opened", "Poorten geopend"),
     ("service_changed", "Dienst of versie gewijzigd"),
     ("port_closed", "Poorten gesloten"),
@@ -53,16 +55,29 @@ def _line(db: Database, type_: str, mac: str | None, d: dict) -> str:
         return f"{who} ({d.get('ip')}), weg sinds {d.get('away_since')}"
     if type_ in ("ip_changed", "hostname_changed"):
         return f"{who}: {d.get('old')} naar {d.get('new')}"
+    if type_ in ("approved", "rejected"):
+        return f"{who} ({d.get('ip')}, {mac})"
     if type_ == "baseline":
         return f"{d.get('devices')} apparaten vastgelegd als beginsituatie"
     return f"{who}: {json.dumps(d, ensure_ascii=False)}"
 
 
+def _rejected_online(db: Database) -> str | None:
+    rows = db.conn.execute(
+        "SELECT * FROM devices WHERE review = 'rejected' AND present = 1 ORDER BY ip"
+    ).fetchall()
+    if not rows:
+        return None
+    lines = "\n".join(f"- {_label(db, r['mac'])} ({r['ip']}, {r['mac']})" for r in rows)
+    return f"Let op: afgekeurde apparaten nog online ({len(rows)})\n{lines}"
+
+
 def build_report(db: Database, start: str, end: str) -> tuple[str, int]:
     """Geeft (tekst, aantal gebeurtenissen). Een lege periode is één regel."""
     events = db.events_between(start, end)
+    warning = _rejected_online(db)
     if not events:
-        return "Geen wijzigingen.", 0
+        return (f"{warning}\n\nGeen wijzigingen." if warning else "Geen wijzigingen."), 0
     by_type: dict[str, list[str]] = {}
     for e in events:
         by_type.setdefault(e["type"], []).append(_line(db, e["type"], e["mac"], json.loads(e["detail"])))
@@ -73,6 +88,8 @@ def build_report(db: Database, start: str, end: str) -> tuple[str, int]:
             parts.append(f"{title} ({len(lines)})\n" + "\n".join(f"- {l}" for l in lines))
     for type_, lines in by_type.items():
         parts.append(f"{type_} ({len(lines)})\n" + "\n".join(f"- {l}" for l in lines))
+    if warning:
+        parts.insert(0, warning)
     return "\n\n".join(parts), len(events)
 
 

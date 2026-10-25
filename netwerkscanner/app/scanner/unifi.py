@@ -58,17 +58,35 @@ class UniFiClient:
                 last_error = exc
         raise RuntimeError(f"Inloggen op UniFi mislukt: {last_error}")
 
-    def active_clients(self) -> list[Client]:
+    def _get(self, path: str) -> list[dict]:
         if self.base is None:
             self._login()
-        url = f"{self.base}{self.api_prefix}/api/s/{self.cfg.unifi_site}/stat/sta"
-        resp = self.session.get(url, timeout=15)
+        resp = self.session.get(f"{self.base}{self.api_prefix}/api/s/{self.cfg.unifi_site}/{path}", timeout=15)
         if resp.status_code == 401:
             self.base = None
             self._login()
-            resp = self.session.get(f"{self.base}{self.api_prefix}/api/s/{self.cfg.unifi_site}/stat/sta", timeout=15)
+            resp = self.session.get(f"{self.base}{self.api_prefix}/api/s/{self.cfg.unifi_site}/{path}", timeout=15)
         resp.raise_for_status()
-        return [parse_client(raw) for raw in resp.json().get("data", []) if raw.get("mac")]
+        return resp.json().get("data", [])
+
+    def active_clients(self) -> list[Client]:
+        """Clients plus de UniFi-apparaten zelf (switches, access points), die niet in stat/sta staan."""
+        clients = [parse_client(raw) for raw in self._get("stat/sta") if raw.get("mac")]
+        devices = [parse_device(raw) for raw in self._get("stat/device") if raw.get("mac") and raw.get("state") == 1]
+        return clients + devices
+
+
+def parse_device(raw: dict) -> Client:
+    """Een UniFi-apparaat; de naam is wat je in UniFi ziet, anders het model (bijv. 'USW Flex Mini')."""
+    model = raw.get("model_name") or raw.get("model")
+    return Client(
+        mac=normalize_mac(raw["mac"]),
+        ip=raw.get("ip"),
+        hostname=None,
+        name=raw.get("name") or model,
+        vendor="Ubiquiti",
+        network="UniFi-apparaat",
+    )
 
 
 def parse_client(raw: dict) -> Client:

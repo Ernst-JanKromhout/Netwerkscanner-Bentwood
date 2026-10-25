@@ -18,7 +18,8 @@ CREATE TABLE IF NOT EXISTS devices (
     first_seen  TEXT NOT NULL,
     last_seen   TEXT NOT NULL,
     present     INTEGER NOT NULL DEFAULT 1,
-    trusted     INTEGER NOT NULL DEFAULT 0
+    trusted     INTEGER NOT NULL DEFAULT 0,
+    review      TEXT  -- NULL = nog te beoordelen, 'approved' of 'rejected'
 );
 
 -- Alleen een regel bij een wijziging van IP of hostnaam, of bij terugkeer.
@@ -84,6 +85,9 @@ class Database:
         self.conn.execute("PRAGMA journal_mode=WAL")
         self.conn.execute("PRAGMA foreign_keys=ON")
         self.conn.executescript(SCHEMA)
+        columns = {r["name"] for r in self.conn.execute("PRAGMA table_info(devices)")}
+        if "review" not in columns:
+            self.conn.execute("ALTER TABLE devices ADD COLUMN review TEXT")
 
     def close(self) -> None:
         self.conn.close()
@@ -139,10 +143,23 @@ class Database:
         self.conn.execute("UPDATE devices SET present = ? WHERE mac = ?", (int(present), mac))
 
     def set_trusted(self, macs: set[str]) -> None:
-        self.conn.execute("UPDATE devices SET trusted = 0")
+        """Vertrouwd = goedgekeurd, of in trusted_macs zolang het niet is afgekeurd."""
+        self.conn.execute("UPDATE devices SET trusted = (review IS 'approved')")
         self.conn.executemany(
-            "UPDATE devices SET trusted = 1 WHERE mac = ?", [(m,) for m in macs]
+            "UPDATE devices SET trusted = 1 WHERE mac = ? AND review IS NOT 'rejected'", [(m,) for m in macs]
         )
+
+    def set_review(self, mac: str, review: str) -> bool:
+        cur = self.conn.execute(
+            "UPDATE devices SET review = ?, trusted = ? WHERE mac = ?",
+            (review, int(review == "approved"), mac),
+        )
+        return cur.rowcount > 0
+
+    def pending_devices(self) -> list[sqlite3.Row]:
+        return self.conn.execute(
+            "SELECT * FROM devices WHERE trusted = 0 AND review IS NULL ORDER BY present DESC, last_seen DESC"
+        ).fetchall()
 
     def stale_devices(self, before: str) -> list[sqlite3.Row]:
         return self.conn.execute(
@@ -173,6 +190,31 @@ class Database:
             "SELECT port, proto, service, version FROM ports WHERE scan_id = ?", (scan["id"],)
         ).fetchall()
         return {(r["port"], r["proto"]): {"service": r["service"], "version": r["version"]} for r in rows}
+
+    def latest_ports(self) -> dict[str, list[dict]]:
+        """Open poorten uit de laatste geslaagde scan per apparaat (elk soort scan)."""
+        rows = self.conn.execute(
+            """
+            SELECT s.mac, p.port, p.proto, p.service, p.version
+            FROM scans s
+            JOIN (SELECT mac, MAX(id) AS id FROM scans WHERE host_up = 1 GROUP BY mac) last
+              ON last.id = s.id
+            JOIN ports p ON p.scan_id = s.id
+            ORDER BY s.mac, p.proto, p.port
+            """
+        ).fetchall()
+        result: dict[str, list[dict]] = {}
+        for r in rows:
+            result.setdefault(r["mac"], []).append(
+                {"port": r["port"], "proto": r["proto"], "service": r["service"], "version": r["version"]}
+            )
+        return result
+
+    def scanned_macs(self) -> set[str]:
+        return {r["mac"] for r in self.conn.execute("SELECT DISTINCT mac FROM scans WHERE host_up = 1")}
+
+    def recent_events(self, limit: int) -> list[sqlite3.Row]:
+        return self.conn.execute("SELECT * FROM events ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
 
     def add_scan(self, ts: str, mac: str, ip: str, kind: str, duration_s: float, host_up: bool,
                  ports: dict[tuple[int, str], dict]) -> int:
