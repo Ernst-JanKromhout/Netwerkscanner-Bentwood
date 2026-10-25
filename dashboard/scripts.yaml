@@ -1,0 +1,34 @@
+# Drie scripts voor de knoppen op het dashboard.
+# Plak elk blok in een nieuw script: Instellingen → Automatiseringen en scènes → Scripts →
+# Script toevoegen → Nieuw script maken → ⋮ → Bewerken in YAML. Sla op met de naam die erboven staat.
+
+# script.netwerkscanner_goedkeuren
+alias: "Netwerkscanner: apparaat goedkeuren"
+icon: mdi:check-circle
+mode: single
+sequence:
+  - event: netwerkscanner_review
+    event_data:
+      action: approve
+      device: "{{ states('input_select.netwerkscanner_te_beoordelen') }}"
+
+---
+# script.netwerkscanner_afkeuren
+alias: "Netwerkscanner: apparaat afkeuren"
+icon: mdi:close-circle
+mode: single
+sequence:
+  - event: netwerkscanner_review
+    event_data:
+      action: reject
+      device: "{{ states('input_select.netwerkscanner_te_beoordelen') }}"
+
+---
+# script.netwerkscanner_alles_goedkeuren
+alias: "Netwerkscanner: alle openstaande goedkeuren"
+icon: mdi:check-all
+mode: single
+sequence:
+  - event: netwerkscanner_review
+    event_data:
+      action: approve_all
