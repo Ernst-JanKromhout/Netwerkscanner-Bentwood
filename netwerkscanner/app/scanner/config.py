@@ -18,7 +18,7 @@ def _parse_time(value: str) -> time:
 
 @dataclass
 class Config:
-    unifi_host: str = "192.168.1.227"
+    unifi_host: str = ""
     unifi_username: str = ""
     unifi_password: str = ""
     unifi_site: str = "default"

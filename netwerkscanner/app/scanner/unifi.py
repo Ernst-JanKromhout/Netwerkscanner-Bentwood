@@ -1,4 +1,4 @@
-"""Leest actieve clients uit de UniFi Network-controller (Cloud Key Gen2)."""
+"""Leest actieve clients uit de UniFi Network-controller (UniFi OS of losse controller)."""
 
 from __future__ import annotations
 
