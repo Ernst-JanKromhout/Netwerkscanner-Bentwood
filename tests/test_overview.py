@@ -10,7 +10,10 @@ T0 = datetime(2026, 10, 25, 12, 0, tzinfo=timezone.utc)
 
 
 class FakeHA:
-    def notify(self, services, title, message, actions=None):
+    def notify(self, services, title, message, url=None):
+        return True
+
+    def persistent_notification(self, notification_id, title, message):
         return True
 
 

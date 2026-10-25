@@ -15,8 +15,12 @@ class FakeHA:
     def __init__(self):
         self.pushes, self.sensors, self.selects = [], {}, {}
 
-    def notify(self, services, title, message, actions=None):
-        self.pushes.append((title, message, actions))
+    def notify(self, services, title, message, url=None):
+        self.pushes.append((title, message, url))
+        return True
+
+    def persistent_notification(self, notification_id, title, message):
+        self.notifications = getattr(self, "notifications", []) + [(notification_id, message)]
         return True
 
     def set_sensor(self, entity_id, state, attributes):
@@ -37,19 +41,20 @@ def setup(tmp_path, trusted=()):
 
 
 def test_parse_push_and_dashboard_events():
-    assert parse("mobile_app_notification_action", {"action": f"NWS_APPROVE_{CAM}"}) == ("approve", CAM)
-    assert parse("mobile_app_notification_action", {"action": "NWS_REJECT_DA:A1:19:00:00:05"}) == ("reject", CAM)
-    assert parse("mobile_app_notification_action", {"action": "IETS_ANDERS"}) is None
+    assert parse("mobile_app_notification_action", {"action": f"NWS_APPROVE_{CAM}"}) is None
     assert parse("netwerkscanner_review", {"action": "reject", "device": f"camera (192.168.1.40) {CAM}"}) == ("reject", CAM)
     assert parse("netwerkscanner_review", {"action": "approve", "device": NOTHING_PENDING}) is None
     assert parse("netwerkscanner_review", {"action": "approve_all"}) == ("approve_all", None)
 
 
-def test_push_has_approve_and_reject_buttons(tmp_path):
+def test_push_links_to_dashboard(tmp_path):
     _, _, ha = setup(tmp_path)
-    actions = ha.pushes[0][2]
-    assert [a["title"] for a in actions] == ["Goedkeuren", "Afkeuren"]
-    assert actions[0]["action"] == f"NWS_APPROVE_{CAM}"
+    title, message, url = ha.pushes[0]
+    assert url == "/dashboard-beveiliging/netwerk"
+    assert "dashboard Beveiliging" in message
+    notification_id, text = ha.notifications[0]
+    assert notification_id.startswith("netwerkscanner_")
+    assert "(/dashboard-beveiliging/netwerk)" in text
 
 
 def test_approve_and_reject(tmp_path):
