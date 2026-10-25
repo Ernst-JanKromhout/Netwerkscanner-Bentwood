@@ -5,10 +5,10 @@ from __future__ import annotations
 import json
 from datetime import datetime, timedelta
 
-from .db import Database, iso, utcnow
+from .db import Database, iso, label, utcnow
 from .homeassistant import HomeAssistant
 from .report import SECTIONS, _line
-from .review import NOTHING_PENDING, SELECT_ENTITY, option_label
+from .review import NAME_SELECT, NOTHING_PENDING, SELECT_ENTITY, option_label
 
 TYPE_LABELS = dict(SECTIONS)
 
@@ -26,7 +26,7 @@ def devices(db: Database) -> list[dict]:
     for d in rows:
         open_ports = ports.get(d["mac"], [])
         result.append({
-            "naam": d["name"] or d["hostname"] or d["vendor"] or "Onbekend",
+            "naam": label(d),
             "ip": d["ip"] or "",
             "mac": d["mac"],
             "fabrikant": d["vendor"] or "",
@@ -99,3 +99,4 @@ def publish(db: Database, ha: HomeAssistant) -> None:
                   {"friendly_name": "Netwerk: laatste wijzigingen", "icon": "mdi:history",
                    "wijzigingen": changes})
     ha.set_select_options(SELECT_ENTITY, [option_label(d) for d in pending] or [NOTHING_PENDING])
+    ha.set_select_options(NAME_SELECT, [option_label(d) for d in db.all_devices()] or [NOTHING_PENDING])

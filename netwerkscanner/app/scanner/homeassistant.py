@@ -62,6 +62,27 @@ class HomeAssistant:
             {"notification_id": notification_id, "title": title, "message": message},
         )
 
+    def state(self, entity_id: str) -> dict | None:
+        """Huidige toestand, of None als de entiteit niet bestaat of HA niet antwoordt."""
+        try:
+            resp = self.session.get(f"{self.base_url}/states/{entity_id}", timeout=15)
+            if resp.status_code == 404:
+                return None
+            resp.raise_for_status()
+            return resp.json()
+        except (requests.RequestException, ValueError) as exc:
+            log.warning("Toestand van %s ophalen mislukt: %s", entity_id, exc)
+            return None
+
+    def save_script(self, script_id: str, config: dict) -> bool:
+        try:
+            resp = self.session.post(f"{self.base_url}/config/script/config/{script_id}", json=config, timeout=15)
+            resp.raise_for_status()
+            return True
+        except requests.RequestException as exc:
+            log.warning("Script %s aanmaken mislukt: %s", script_id, exc)
+            return False
+
     def set_select_options(self, entity_id: str, options: list[str]) -> bool:
         return self.call_service("input_select.set_options", {"entity_id": entity_id, "options": options})
 

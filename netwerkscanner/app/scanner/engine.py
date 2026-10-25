@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from typing import Callable
 
 from .config import Config
-from .db import Database, iso, utcnow
+from .db import Database, iso, label, utcnow
 from .diff import Change, diff_identity, diff_ports, is_random_mac
 from .homeassistant import HomeAssistant
 from .nmap import Host
@@ -30,8 +30,7 @@ class Sighting:
 
 def describe(device) -> str:
     """Leesbare naam van een apparaat: naam, hostnaam of fabrikant, met IP en MAC."""
-    label = device["name"] or device["hostname"] or device["vendor"] or "Onbekend apparaat"
-    return f"{label} ({device['ip'] or 'geen IP'}, {device['mac']})"
+    return f"{label(device, 'Onbekend apparaat')} ({device['ip'] or 'geen IP'}, {device['mac']})"
 
 
 class Engine:
@@ -148,9 +147,20 @@ class Engine:
 
     # beoordelen
 
-    def review(self, action: str, mac: str | None, now: datetime | None = None) -> int:
-        """Keurt een apparaat (of met 'approve_all' alle openstaande) goed of af. Geeft het aantal terug."""
+    def review(self, action: str, mac: str | None, now: datetime | None = None, name: str | None = None) -> int:
+        """Keurt een apparaat (of met 'approve_all' alle openstaande) goed of af, of geeft het een naam.
+
+        Geeft het aantal aangepaste apparaten terug.
+        """
         ts = iso(now or utcnow())
+        if action == "rename":
+            device = self.db.device(mac) if mac else None
+            if device is None:
+                return 0
+            old = label(device)
+            self.db.set_alias(mac, (name or "").strip())
+            self.db.add_event(ts, "renamed", mac, {"ip": device["ip"], "old": old, "new": label(self.db.device(mac))})
+            return 1
         if action == "approve_all":
             macs = [d["mac"] for d in self.db.pending_devices()]
             review = "approved"

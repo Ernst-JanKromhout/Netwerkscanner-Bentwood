@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from .db import Database
+from .db import Database, label
 
 SECTIONS = [
     ("new_device", "Nieuwe apparaten"),
@@ -18,6 +18,7 @@ SECTIONS = [
     ("device_back", "Weer terug"),
     ("ip_changed", "IP-wissels"),
     ("hostname_changed", "Naamwissels"),
+    ("renamed", "Zelf hernoemd"),
     ("baseline", "Start van de scanner"),
 ]
 
@@ -28,7 +29,7 @@ def _label(db: Database, mac: str | None) -> str:
     device = db.device(mac)
     if device is None:
         return mac
-    return device["name"] or device["hostname"] or device["vendor"] or mac
+    return label(device, mac)
 
 
 def _port(d: dict) -> str:
@@ -53,7 +54,7 @@ def _line(db: Database, type_: str, mac: str | None, d: dict) -> str:
         return f"{who} ({d.get('ip')}), laatst gezien {d.get('last_seen')}"
     if type_ == "device_back":
         return f"{who} ({d.get('ip')}), weg sinds {d.get('away_since')}"
-    if type_ in ("ip_changed", "hostname_changed"):
+    if type_ in ("ip_changed", "hostname_changed", "renamed"):
         return f"{who}: {d.get('old')} naar {d.get('new')}"
     if type_ in ("approved", "rejected"):
         return f"{who} ({d.get('ip')}, {mac})"

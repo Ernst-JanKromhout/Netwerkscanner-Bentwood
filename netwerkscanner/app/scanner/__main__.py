@@ -9,7 +9,7 @@ import threading
 import time
 from datetime import datetime, timedelta
 
-from . import nmap
+from . import nmap, setup_ha
 from .config import DB_PATH, Config
 from .db import Database, iso, utcnow
 from .engine import Engine, Sighting
@@ -112,10 +112,10 @@ class Scanner:
         parsed = parse(event_type, data)
         if parsed is None:
             return
-        action, mac = parsed
+        action, mac, name = parsed
         if self._event_db is None:
             self._event_db = Database(DB_PATH)
-        count = Engine(self._event_db, self.cfg, self.ha).review(action, mac)
+        count = Engine(self._event_db, self.cfg, self.ha).review(action, mac, name=name)
         log.info("Beoordeling %s voor %s: %d apparaat/apparaten", action, mac or "alle openstaande", count)
         publish(self._event_db, self.ha)
 
@@ -180,12 +180,25 @@ def use_home_assistant_time_zone() -> None:
         time.tzset()
 
 
+def set_up_dashboard(cfg: Config) -> None:
+    """Fouten hier mogen de scanner niet tegenhouden: zonder dashboard werken meldingen gewoon."""
+    try:
+        created = setup_ha.ensure(HomeAssistant(), cfg.dashboard_path)
+    except Exception as exc:
+        log.warning("Dashboard en knoppen aanmaken mislukt: %s", exc)
+        return
+    if created:
+        log.info("Aangemaakt in Home Assistant: %s", ", ".join(created))
+
+
 def main() -> None:
     cfg = Config.load()
     logging.basicConfig(level=cfg.log_level.upper(), format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     use_home_assistant_time_zone()
     log.info("Netwerkscanner start, tijdzone %s, subnetten: %s",
              os.environ.get("TZ", "UTC"), ", ".join(cfg.subnets) or "geen")
+    if cfg.create_dashboard:
+        set_up_dashboard(cfg)
     Scanner(cfg).run()
 
 

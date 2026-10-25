@@ -26,6 +26,7 @@ class Config:
     subnets: list[str] = field(default_factory=list)
     notify_services: list[str] = field(default_factory=list)
     dashboard_path: str = "/dashboard-netwerk/overzicht"
+    create_dashboard: bool = True
     trusted_macs: set[str] = field(default_factory=set)
     unifi_interval_seconds: int = 60
     ping_interval_minutes: int = 15

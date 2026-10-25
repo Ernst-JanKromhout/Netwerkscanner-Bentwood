@@ -19,7 +19,8 @@ CREATE TABLE IF NOT EXISTS devices (
     last_seen   TEXT NOT NULL,
     present     INTEGER NOT NULL DEFAULT 1,
     trusted     INTEGER NOT NULL DEFAULT 0,
-    review      TEXT  -- NULL = nog te beoordelen, 'approved' of 'rejected'
+    review      TEXT, -- NULL = nog te beoordelen, 'approved' of 'rejected'
+    alias       TEXT  -- naam die de gebruiker zelf gaf; gaat boven alle andere namen
 );
 
 -- Alleen een regel bij een wijziging van IP of hostnaam, of bij terugkeer.
@@ -78,6 +79,13 @@ def iso(dt: datetime) -> str:
     return dt.astimezone(timezone.utc).isoformat(timespec="seconds")
 
 
+def label(device, fallback: str = "Onbekend") -> str:
+    """Naam om te tonen: eigen naam, dan UniFi-naam, hostnaam of fabrikant."""
+    keys = device.keys()
+    alias = device["alias"] if "alias" in keys else None
+    return alias or device["name"] or device["hostname"] or device["vendor"] or fallback
+
+
 class Database:
     def __init__(self, path: Path | str):
         self.conn = sqlite3.connect(str(path), timeout=30, isolation_level=None)
@@ -88,6 +96,8 @@ class Database:
         columns = {r["name"] for r in self.conn.execute("PRAGMA table_info(devices)")}
         if "review" not in columns:
             self.conn.execute("ALTER TABLE devices ADD COLUMN review TEXT")
+        if "alias" not in columns:
+            self.conn.execute("ALTER TABLE devices ADD COLUMN alias TEXT")
 
     def close(self) -> None:
         self.conn.close()
@@ -155,6 +165,13 @@ class Database:
             (review, int(review == "approved"), mac),
         )
         return cur.rowcount > 0
+
+    def set_alias(self, mac: str, alias: str | None) -> bool:
+        cur = self.conn.execute("UPDATE devices SET alias = ? WHERE mac = ?", (alias or None, mac))
+        return cur.rowcount > 0
+
+    def all_devices(self) -> list[sqlite3.Row]:
+        return self.conn.execute("SELECT * FROM devices ORDER BY present DESC, ip").fetchall()
 
     def pending_devices(self) -> list[sqlite3.Row]:
         return self.conn.execute(
