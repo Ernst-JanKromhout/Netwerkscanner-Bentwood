@@ -38,7 +38,7 @@ Ook `sensor.netwerkscanner_te_beoordelen`: het aantal apparaten dat nog niet is 
 ## Goedkeuren en afkeuren
 
 Een pushmelding is alleen een seintje: tik erop en de HA-app opent het dashboard op `dashboard_path`
-(standaard `/beveiliging/netwerk`). Daar keur je het apparaat goed of af. Zo raak je niets kwijt als je
+(standaard `/dashboard-beveiliging/netwerk`). Daar keur je het apparaat goed of af. Zo raak je niets kwijt als je
 de melding per ongeluk wegtikt; de melding staat ook in Home Assistant zelf.
 
 - **Goedkeuren**: het apparaat telt als vertrouwd. Nieuwe poorten op dat apparaat zie je alleen nog in het dagrapport.
@@ -71,5 +71,5 @@ Maak de keuzelijst eenmalig aan als helper (*Instellingen → Apparaten & dienst
 `notify_services` accepteert elke dienst die `title` en `message` kent, bijvoorbeeld
 `notify.mobile_app_<telefoon>` of `telegram_bot.send_message`.
 
-`dashboard_path` is de pagina die opent als je op een pushmelding tikt, standaard `/beveiliging/netwerk`.
+`dashboard_path` is de pagina die opent als je op een pushmelding tikt, standaard `/dashboard-beveiliging/netwerk`.
 Pas hem aan als je dashboard een ander adres heeft.

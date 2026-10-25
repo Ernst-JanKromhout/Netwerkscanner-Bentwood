@@ -22,7 +22,7 @@ options:
   unifi_verify_ssl: false
   subnets: []
   notify_services: []
-  dashboard_path: /beveiliging/netwerk
+  dashboard_path: /dashboard-beveiliging/netwerk
   trusted_macs: []
   unifi_interval_seconds: 60
   ping_interval_minutes: 15
