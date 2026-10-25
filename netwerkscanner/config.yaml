@@ -15,16 +15,13 @@ privileged:
   - NET_ADMIN
 homeassistant_api: true
 options:
-  unifi_host: "192.168.1.227"
+  unifi_host: ""
   unifi_username: ""
   unifi_password: ""
   unifi_site: default
   unifi_verify_ssl: false
-  subnets:
-    - 192.168.1.0/24
-    - 192.168.30.0/24
-  notify_services:
-    - notify.mobile_app_iphone_ernst_jan_kromhout
+  subnets: []
+  notify_services: []
   trusted_macs: []
   unifi_interval_seconds: 60
   ping_interval_minutes: 15
