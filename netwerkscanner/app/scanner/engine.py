@@ -141,8 +141,8 @@ class Engine:
     def _push(self, event_id: int, title: str, message: str) -> None:
         url = self.cfg.dashboard_path
         self.ha.persistent_notification(f"netwerkscanner_{event_id}", title,
-                                        f"{message}\n\n[Open het dashboard Beveiliging]({url})")
-        message += "\nBeoordeel het in het dashboard Beveiliging."
+                                        f"{message}\n\n[Open het dashboard Netwerk]({url})")
+        message += "\nBeoordeel het in het dashboard Netwerk."
         if self.ha.notify(self.cfg.notify_services, title, message, url):
             self.db.mark_notified(event_id)
 
