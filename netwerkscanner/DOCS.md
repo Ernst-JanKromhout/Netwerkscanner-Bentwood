@@ -24,7 +24,16 @@ De eerste keer legt de scanner alle aanwezige apparaten vast als beginsituatie, 
 Het dagrapport komt op `report_time` als melding in Home Assistant, en met `report_to_notify`
 ook als korte samenvatting op je telefoon.
 
-Sensoren: `sensor.netwerkscanner_apparaten_online` en `sensor.netwerkscanner_gebeurtenissen_vandaag`.
+Sensoren:
+
+| Sensor | Waarde | Extra |
+| --- | --- | --- |
+| `sensor.netwerkscanner_apparaten_online` | apparaten online | `bekend_totaal` |
+| `sensor.netwerkscanner_gebeurtenissen_vandaag` | wijzigingen vandaag | |
+| `sensor.netwerkscanner_apparaten` | bekende apparaten | `apparaten`: naam, IP, MAC, online, vertrouwd, open poorten |
+| `sensor.netwerkscanner_laatste_wijzigingen` | tijd van de laatste wijziging | `wijzigingen`: de laatste 25, nieuwste eerst |
+
+De attributen van de laatste twee zijn bedoeld voor een dashboard, bijvoorbeeld met een Markdown-kaart.
 
 ## Instellen
 

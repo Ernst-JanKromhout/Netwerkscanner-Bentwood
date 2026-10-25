@@ -14,6 +14,7 @@ from .config import DB_PATH, Config
 from .db import Database, iso, utcnow
 from .engine import Engine, Sighting
 from .homeassistant import HomeAssistant
+from .overview import devices, recent_changes
 from .report import build_report, build_summary
 from .schedule import next_daily, nightly_kind
 from .unifi import UniFiClient
@@ -111,6 +112,13 @@ class Scanner:
         self.ha.set_sensor("sensor.netwerkscanner_gebeurtenissen_vandaag", len(today),
                            {"friendly_name": "Netwerk: wijzigingen vandaag", "unit_of_measurement": "wijzigingen",
                             "icon": "mdi:lan-pending"})
+        self.ha.set_sensor("sensor.netwerkscanner_apparaten", known,
+                           {"friendly_name": "Netwerk: apparaten", "unit_of_measurement": "apparaten",
+                            "icon": "mdi:devices", "apparaten": devices(self.db)})
+        changes = recent_changes(self.db)
+        self.ha.set_sensor("sensor.netwerkscanner_laatste_wijzigingen", changes[0]["tijd"] if changes else "geen",
+                           {"friendly_name": "Netwerk: laatste wijzigingen", "icon": "mdi:history",
+                            "wijzigingen": changes})
 
     def run(self) -> None:
         self.db.set_trusted(self.cfg.trusted_macs)

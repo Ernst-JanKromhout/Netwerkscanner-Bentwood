@@ -174,6 +174,31 @@ class Database:
         ).fetchall()
         return {(r["port"], r["proto"]): {"service": r["service"], "version": r["version"]} for r in rows}
 
+    def latest_ports(self) -> dict[str, list[dict]]:
+        """Open poorten uit de laatste geslaagde scan per apparaat (elk soort scan)."""
+        rows = self.conn.execute(
+            """
+            SELECT s.mac, p.port, p.proto, p.service, p.version
+            FROM scans s
+            JOIN (SELECT mac, MAX(id) AS id FROM scans WHERE host_up = 1 GROUP BY mac) last
+              ON last.id = s.id
+            JOIN ports p ON p.scan_id = s.id
+            ORDER BY s.mac, p.proto, p.port
+            """
+        ).fetchall()
+        result: dict[str, list[dict]] = {}
+        for r in rows:
+            result.setdefault(r["mac"], []).append(
+                {"port": r["port"], "proto": r["proto"], "service": r["service"], "version": r["version"]}
+            )
+        return result
+
+    def scanned_macs(self) -> set[str]:
+        return {r["mac"] for r in self.conn.execute("SELECT DISTINCT mac FROM scans WHERE host_up = 1")}
+
+    def recent_events(self, limit: int) -> list[sqlite3.Row]:
+        return self.conn.execute("SELECT * FROM events ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+
     def add_scan(self, ts: str, mac: str, ip: str, kind: str, duration_s: float, host_up: bool,
                  ports: dict[tuple[int, str], dict]) -> int:
         cur = self.conn.execute(
