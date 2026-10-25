@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<nmaprun scanner="nmap" args="nmap -oX - -sS -sV --top-ports 1000 192.168.1.50">
+  <host starttime="1761400000" endtime="1761400060">
+    <status state="up" reason="arp-response"/>
+    <address addr="192.168.1.50" addrtype="ipv4"/>
+    <address addr="AA:BB:CC:00:11:22" addrtype="mac" vendor="Synology"/>
+    <hostnames><hostname name="nas.local" type="PTR"/></hostnames>
+    <ports>
+      <port protocol="tcp" portid="22"><state state="open"/><service name="ssh" product="OpenSSH" version="9.6"/></port>
+      <port protocol="tcp" portid="443"><state state="open"/><service name="https" product="nginx"/></port>
+      <port protocol="tcp" portid="8080"><state state="closed"/><service name="http-proxy"/></port>
+      <port protocol="udp" portid="161"><state state="open|filtered"/><service name="snmp"/></port>
+    </ports>
+  </host>
+  <host starttime="1761400000" endtime="1761400900" timedout="true">
+    <status state="up" reason="echo-reply"/>
+    <address addr="192.168.30.12" addrtype="ipv4"/>
+  </host>
+</nmaprun>

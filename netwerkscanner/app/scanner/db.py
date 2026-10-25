@@ -1,0 +1,215 @@
+"""SQLite-opslag van apparaten, waarnemingen, scans, poorten en gebeurtenissen."""
+
+from __future__ import annotations
+
+import json
+import sqlite3
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+SCHEMA = """
+CREATE TABLE IF NOT EXISTS devices (
+    mac         TEXT PRIMARY KEY,
+    ip          TEXT,
+    hostname    TEXT,
+    name        TEXT,
+    vendor      TEXT,
+    network     TEXT,
+    first_seen  TEXT NOT NULL,
+    last_seen   TEXT NOT NULL,
+    present     INTEGER NOT NULL DEFAULT 1,
+    trusted     INTEGER NOT NULL DEFAULT 0
+);
+
+-- Alleen een regel bij een wijziging van IP of hostnaam, of bij terugkeer.
+CREATE TABLE IF NOT EXISTS observations (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts        TEXT NOT NULL,
+    mac       TEXT NOT NULL,
+    ip        TEXT,
+    hostname  TEXT,
+    source    TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_observations_mac ON observations (mac, ts);
+
+CREATE TABLE IF NOT EXISTS scans (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts           TEXT NOT NULL,
+    mac          TEXT NOT NULL,
+    ip           TEXT NOT NULL,
+    kind         TEXT NOT NULL,
+    duration_s   REAL,
+    host_up      INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_scans_mac ON scans (mac, ts);
+
+CREATE TABLE IF NOT EXISTS ports (
+    scan_id   INTEGER NOT NULL REFERENCES scans (id) ON DELETE CASCADE,
+    port      INTEGER NOT NULL,
+    proto     TEXT NOT NULL,
+    service   TEXT,
+    version   TEXT,
+    PRIMARY KEY (scan_id, port, proto)
+);
+
+CREATE TABLE IF NOT EXISTS events (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts        TEXT NOT NULL,
+    type      TEXT NOT NULL,
+    mac       TEXT,
+    detail    TEXT NOT NULL,
+    notified  INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_events_ts ON events (ts);
+
+CREATE TABLE IF NOT EXISTS meta (
+    key    TEXT PRIMARY KEY,
+    value  TEXT NOT NULL
+);
+"""
+
+
+def utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def iso(dt: datetime) -> str:
+    return dt.astimezone(timezone.utc).isoformat(timespec="seconds")
+
+
+class Database:
+    def __init__(self, path: Path | str):
+        self.conn = sqlite3.connect(str(path), timeout=30, isolation_level=None)
+        self.conn.row_factory = sqlite3.Row
+        self.conn.execute("PRAGMA journal_mode=WAL")
+        self.conn.execute("PRAGMA foreign_keys=ON")
+        self.conn.executescript(SCHEMA)
+
+    def close(self) -> None:
+        self.conn.close()
+
+    # meta
+
+    def get_meta(self, key: str) -> str | None:
+        row = self.conn.execute("SELECT value FROM meta WHERE key = ?", (key,)).fetchone()
+        return row["value"] if row else None
+
+    def set_meta(self, key: str, value: str) -> None:
+        self.conn.execute(
+            "INSERT INTO meta (key, value) VALUES (?, ?) "
+            "ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+            (key, value),
+        )
+
+    # devices
+
+    def device(self, mac: str) -> sqlite3.Row | None:
+        return self.conn.execute("SELECT * FROM devices WHERE mac = ?", (mac,)).fetchone()
+
+    def device_by_ip(self, ip: str) -> sqlite3.Row | None:
+        return self.conn.execute(
+            "SELECT * FROM devices WHERE ip = ? ORDER BY last_seen DESC LIMIT 1", (ip,)
+        ).fetchone()
+
+    def device_count(self) -> int:
+        return self.conn.execute("SELECT COUNT(*) FROM devices").fetchone()[0]
+
+    def present_devices(self) -> list[sqlite3.Row]:
+        return self.conn.execute(
+            "SELECT * FROM devices WHERE present = 1 AND ip IS NOT NULL ORDER BY ip"
+        ).fetchall()
+
+    def upsert_device(self, mac: str, ts: str, **fields) -> None:
+        existing = self.device(mac)
+        if existing is None:
+            cols = ["mac", "first_seen", "last_seen", *fields]
+            vals = [mac, ts, ts, *fields.values()]
+            self.conn.execute(
+                f"INSERT INTO devices ({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))})",
+                vals,
+            )
+            return
+        sets = ["last_seen = ?"] + [f"{k} = ?" for k in fields]
+        self.conn.execute(
+            f"UPDATE devices SET {', '.join(sets)} WHERE mac = ?",
+            [ts, *fields.values(), mac],
+        )
+
+    def set_present(self, mac: str, present: bool) -> None:
+        self.conn.execute("UPDATE devices SET present = ? WHERE mac = ?", (int(present), mac))
+
+    def set_trusted(self, macs: set[str]) -> None:
+        self.conn.execute("UPDATE devices SET trusted = 0")
+        self.conn.executemany(
+            "UPDATE devices SET trusted = 1 WHERE mac = ?", [(m,) for m in macs]
+        )
+
+    def stale_devices(self, before: str) -> list[sqlite3.Row]:
+        return self.conn.execute(
+            "SELECT * FROM devices WHERE present = 1 AND last_seen < ?", (before,)
+        ).fetchall()
+
+    def add_observation(self, ts: str, mac: str, ip: str | None, hostname: str | None, source: str) -> None:
+        self.conn.execute(
+            "INSERT INTO observations (ts, mac, ip, hostname, source) VALUES (?, ?, ?, ?, ?)",
+            (ts, mac, ip, hostname, source),
+        )
+
+    # scans
+
+    def last_scan_ports(self, mac: str, kind: str) -> dict[tuple[int, str], dict] | None:
+        """Poorten van de laatste geslaagde scan van dit soort, of None als die er nog niet is.
+
+        Scans worden alleen met hetzelfde soort vergeleken: een volledige scan ziet meer
+        poorten dan een top-scan, en dat is geen wijziging op het apparaat.
+        """
+        scan = self.conn.execute(
+            "SELECT id FROM scans WHERE mac = ? AND kind = ? AND host_up = 1 ORDER BY id DESC LIMIT 1",
+            (mac, kind),
+        ).fetchone()
+        if scan is None:
+            return None
+        rows = self.conn.execute(
+            "SELECT port, proto, service, version FROM ports WHERE scan_id = ?", (scan["id"],)
+        ).fetchall()
+        return {(r["port"], r["proto"]): {"service": r["service"], "version": r["version"]} for r in rows}
+
+    def add_scan(self, ts: str, mac: str, ip: str, kind: str, duration_s: float, host_up: bool,
+                 ports: dict[tuple[int, str], dict]) -> int:
+        cur = self.conn.execute(
+            "INSERT INTO scans (ts, mac, ip, kind, duration_s, host_up) VALUES (?, ?, ?, ?, ?, ?)",
+            (ts, mac, ip, kind, duration_s, int(host_up)),
+        )
+        scan_id = cur.lastrowid
+        self.conn.executemany(
+            "INSERT INTO ports (scan_id, port, proto, service, version) VALUES (?, ?, ?, ?, ?)",
+            [(scan_id, port, proto, p.get("service"), p.get("version")) for (port, proto), p in ports.items()],
+        )
+        return scan_id
+
+    # events
+
+    def add_event(self, ts: str, type_: str, mac: str | None, detail: dict) -> int:
+        cur = self.conn.execute(
+            "INSERT INTO events (ts, type, mac, detail) VALUES (?, ?, ?, ?)",
+            (ts, type_, mac, json.dumps(detail, ensure_ascii=False)),
+        )
+        return cur.lastrowid
+
+    def mark_notified(self, event_id: int) -> None:
+        self.conn.execute("UPDATE events SET notified = 1 WHERE id = ?", (event_id,))
+
+    def events_between(self, start: str, end: str) -> list[sqlite3.Row]:
+        return self.conn.execute(
+            "SELECT * FROM events WHERE ts >= ? AND ts < ? ORDER BY ts", (start, end)
+        ).fetchall()
+
+    # onderhoud
+
+    def prune(self, now: datetime) -> None:
+        """Waarnemingen na 90 dagen weg, scans na een jaar (de laatste per apparaat blijft)."""
+        self.conn.execute("DELETE FROM observations WHERE ts < ?", (iso(now - timedelta(days=90)),))
+        self.conn.execute(
+            "DELETE FROM scans WHERE ts < ? AND id NOT IN (SELECT MAX(id) FROM scans GROUP BY mac, kind)",
+            (iso(now - timedelta(days=365)),),
+        )

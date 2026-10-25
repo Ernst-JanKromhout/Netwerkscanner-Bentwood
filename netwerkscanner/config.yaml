@@ -1,0 +1,58 @@
+name: Netwerkscanner
+version: "0.1.0"
+slug: netwerkscanner
+description: Scant het thuisnetwerk, houdt historie bij en meldt nieuwe apparaten en poorten.
+url: https://github.com/Ernst-JanKromhout/Netwerkscanner-Bentwood
+arch:
+  - aarch64
+  - amd64
+init: false
+startup: application
+boot: auto
+host_network: true
+privileged:
+  - NET_RAW
+  - NET_ADMIN
+homeassistant_api: true
+options:
+  unifi_host: "192.168.1.227"
+  unifi_username: ""
+  unifi_password: ""
+  unifi_site: default
+  unifi_verify_ssl: false
+  subnets:
+    - 192.168.1.0/24
+    - 192.168.30.0/24
+  notify_services:
+    - notify.mobile_app_iphone_ernst_jan_kromhout
+  trusted_macs: []
+  unifi_interval_seconds: 60
+  ping_interval_minutes: 15
+  nightly_scan_time: "03:00"
+  weekly_full_scan: true
+  report_time: "07:30"
+  report_to_notify: true
+  absent_hours: 24
+  top_ports: 1000
+  log_level: info
+schema:
+  unifi_host: str
+  unifi_username: str
+  unifi_password: password
+  unifi_site: str
+  unifi_verify_ssl: bool
+  subnets:
+    - str
+  notify_services:
+    - str
+  trusted_macs:
+    - str
+  unifi_interval_seconds: int(30,3600)
+  ping_interval_minutes: int(5,1440)
+  nightly_scan_time: match(^([01]\d|2[0-3]):[0-5]\d$)
+  weekly_full_scan: bool
+  report_time: match(^([01]\d|2[0-3]):[0-5]\d$)
+  report_to_notify: bool
+  absent_hours: int(1,720)
+  top_ports: int(10,65535)
+  log_level: list(debug|info|warning|error)
