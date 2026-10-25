@@ -57,8 +57,8 @@ sequence:
       device: "{{ states('input_select.netwerkscanner_te_beoordelen') }}"
 ```
 
-Maak de keuzelijst eenmalig aan als helper (*Instellingen → Apparaten & diensten → Helpers*) met
-één optie, bijvoorbeeld `Niets te beoordelen`. De add-on vult hem daarna zelf.
+De add-on maakt de keuzelijst, de scripts en het dashboard bij de start zelf aan als ze ontbreken
+(optie `create_dashboard`). Bestaande versies worden nooit overschreven.
 
 ## Instellen
 

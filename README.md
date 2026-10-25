@@ -8,7 +8,7 @@ Wat de add-on precies doet en welke opties er zijn, staat in [netwerkscanner/DOC
 
 ## Installeren
 
-Reken op een half uur. Je hebt nodig: Home Assistant OS op een 64-bit apparaat (bijvoorbeeld een
+Reken op een kwartier. Je hebt nodig: Home Assistant OS op een 64-bit apparaat (bijvoorbeeld een
 Raspberry Pi 4/5, ODROID of mini-pc), beheerrechten in Home Assistant, en als je UniFi hebt: beheerrechten
 daar en het IP-adres van je UniFi-controller. UniFi is niet verplicht, zie [Zonder UniFi](#zonder-unifi).
 
@@ -69,25 +69,17 @@ Scan top van <ip> klaar in <n> s
 Bij de eerste start legt de scanner alle aanwezige apparaten vast als beginsituatie, zonder
 meldingen. Daarna scant hij ze een voor een op de achtergrond.
 
-### 6. Dashboard toevoegen
+### 6. Dashboard
 
-De add-on vult de sensoren zelf, maar het dashboard en de knoppen zet je eenmalig met de hand in
-Home Assistant. De tekst om te plakken staat in de map [`dashboard/`](dashboard/).
+Dat doet de add-on zelf. Bij de start maakt hij in Home Assistant aan wat nog ontbreekt:
 
-1. **Keuzelijst.** Ga naar **Instellingen → Apparaten & diensten → Helpers → Helper aanmaken → Dropdown**.
-   Naam: `Netwerkscanner te beoordelen`, één optie: `Niets te beoordelen`. Controleer dat de entiteit
-   `input_select.netwerkscanner_te_beoordelen` heet. De add-on vult de lijst daarna zelf.
-2. **Drie scripts.** Ga naar **Instellingen → Automatiseringen en scènes → Scripts → Script toevoegen →
-   Nieuw script maken → ⋮ → Bewerken in YAML**. Plak het eerste blok uit
-   [`dashboard/scripts.yaml`](dashboard/scripts.yaml) en sla op. Herhaal dat voor de andere twee.
-   De entiteiten moeten `script.netwerkscanner_goedkeuren`, `script.netwerkscanner_afkeuren` en
-   `script.netwerkscanner_alles_goedkeuren` heten. Klopt een naam niet, pas hem dan aan via het tandwiel van het script.
-3. **Dashboard.** Ga naar **Instellingen → Dashboards → Dashboard toevoegen → Nieuw dashboard vanaf nul**
-   en noem het `Netwerk`. Open het, klik op het potlood, dan **⋮ → Ruwe configuratie-editor**, vervang alles door
-   de inhoud van [`dashboard/dashboard.yaml`](dashboard/dashboard.yaml) en sla op.
+- het dashboard **Netwerk** in de zijbalk (`/dashboard-netwerk/overzicht`),
+- de keuzelijst `input_select.netwerkscanner_te_beoordelen`,
+- de scripts voor **Goedkeuren**, **Afkeuren** en **Alle openstaande goedkeuren**.
 
-Tik je op een pushmelding, dan opent de HA-app `/dashboard-netwerk/overzicht`. Heeft je dashboard een ander
-adres, pas dan de optie `dashboard_path` aan.
+In het logboek zie je dan `Aangemaakt in Home Assistant: ...`. Ververs de pagina (F5) om het dashboard in de
+zijbalk te zien. Bestaat iets al, dan laat de add-on het met rust, dus je eigen aanpassingen blijven staan.
+Wil je dit niet, zet dan `create_dashboard` uit.
 
 Eerste keer: alle apparaten staan op *te beoordelen*. Loop de lijst door, keur af wat je niet kent en
 druk dan op **Alle openstaande goedkeuren**. Dat is je beginsituatie.
@@ -112,6 +104,7 @@ Zie je die niet? Ga dan naar **Instellingen → Apps → App installeren → ⋮
 | `The repository does not seem to be a integration, but an add-on repository` | Toegevoegd in HACS | Verwijder hem uit HACS en gebruik stap 3 |
 | `Inloggen op UniFi mislukt` | Verkeerde gebruikersnaam of wachtwoord | Controleer stap 1 en de configuratie |
 | `401 Client Error: Unauthorized for url: http://supervisor/core/api/...` | Add-on krijgt geen toegang tot HA | Werk bij naar versie 0.1.2 of nieuwer |
+| `Dashboard en knoppen aanmaken mislukt` | Home Assistant was nog niet klaar bij de start | Herstart de add-on |
 | Geen poorten bij apparaten in een ander subnet (bijv. IoT) | Firewall blokkeert verkeer tussen de netwerken | Sta in UniFi verkeer toe van het IP van Home Assistant naar dat subnet |
 
 ## Ontwikkelen
