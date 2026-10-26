@@ -9,6 +9,7 @@ import requests
 import urllib3
 
 from .config import Config, normalize_mac
+from .security import is_ips_alarm
 
 log = logging.getLogger(__name__)
 
@@ -62,14 +63,22 @@ class UniFiClient:
                 last_error = exc
         raise RuntimeError(f"Inloggen op UniFi mislukt: {last_error}")
 
-    def _get(self, path: str) -> list[dict]:
+    def _get(self, path: str, body: dict | None = None) -> list[dict]:
+        """GET, of POST met `body` (sommige stat-endpoints willen een tijdvak in de body)."""
         if self.base is None:
             self._login()
-        resp = self.session.get(f"{self.base}{self.api_prefix}/api/s/{self.cfg.unifi_site}/{path}", timeout=15)
+
+        def call():
+            url = f"{self.base}{self.api_prefix}/api/s/{self.cfg.unifi_site}/{path}"
+            if body is None:
+                return self.session.get(url, timeout=15)
+            return self.session.post(url, json=body, timeout=15)
+
+        resp = call()
         if resp.status_code == 401:
             self.base = None
             self._login()
-            resp = self.session.get(f"{self.base}{self.api_prefix}/api/s/{self.cfg.unifi_site}/{path}", timeout=15)
+            resp = call()
         resp.raise_for_status()
         try:
             return resp.json().get("data", [])
@@ -81,6 +90,16 @@ class UniFiClient:
         clients = [parse_client(raw) for raw in self._get("stat/sta") if raw.get("mac")]
         devices = [parse_device(raw) for raw in self._get("stat/device") if raw.get("mac") and raw.get("state") == 1]
         return clients + devices
+
+
+    def threat_records(self, since_ms: int, now_ms: int) -> list[dict]:
+        """IPS-meldingen sinds `since_ms`. Oudere Network-versies hebben stat/ips/event, nieuwere
+        zetten ze alleen bij de alarmen; we proberen het eerste en vallen terug op het tweede."""
+        try:
+            return self._get("stat/ips/event", {"start": since_ms, "end": now_ms, "_limit": 500})
+        except (requests.HTTPError, UniFiError) as exc:
+            log.debug("stat/ips/event niet beschikbaar (%s), terugval op list/alarm", exc)
+        return [r for r in self._get("list/alarm") if is_ips_alarm(r)]
 
 
 def parse_device(raw: dict) -> Client:

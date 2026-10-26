@@ -132,6 +132,12 @@ CHANGES_LIST = (
     "{% else %}*Nog geen wijzigingen.*{% endfor %}"
 )
 
+SECURITY_LIST = (
+    "{% set ms = (state_attr('sensor.netwerkscanner_aanvallen_vandaag', 'meldingen') or [])[:5] %}"
+    "{% for m in ms %}{{ '🛡️' if m.geblokkeerd else '🚨' }} **{{ m.tijd[6:] }}** {{ m.soort }}: {{ m.tekst }}\n\n"
+    "{% else %}🛡️ *Geen aanvallen of mislukte logins gezien.*{% endfor %}"
+)
+
 PENDING = {"condition": "numeric_state", "entity": "sensor.netwerkscanner_te_beoordelen", "above": 0}
 
 
@@ -149,9 +155,11 @@ OVERVIEW_SECTIONS = [
         {"type": "tile", "entity": "sensor.netwerkscanner_apparaten_online", "name": "Online", "color": "green",
          "features": [{"type": "trend-graph", "hours_to_show": 24}], "grid_options": {"columns": 12}},
         {"type": "tile", "entity": "sensor.netwerkscanner_te_beoordelen", "name": "Te beoordelen",
-         "color": "orange", "vertical": True, "grid_options": {"columns": 6, "rows": 2}},
+         "color": "orange", "vertical": True, "grid_options": {"columns": 4, "rows": 2}},
+        {"type": "tile", "entity": "sensor.netwerkscanner_aanvallen_vandaag", "name": "Aanvallen vandaag",
+         "color": "red", "vertical": True, "grid_options": {"columns": 4, "rows": 2}},
         {"type": "tile", "entity": "sensor.netwerkscanner_gebeurtenissen_vandaag", "name": "Wijzigingen vandaag",
-         "color": "blue", "vertical": True, "grid_options": {"columns": 6, "rows": 2}},
+         "color": "blue", "vertical": True, "grid_options": {"columns": 4, "rows": 2}},
     ]},
     {"type": "grid", "visibility": [PENDING], "cards": [
         {"type": "heading", "heading": "Te beoordelen", "icon": "mdi:shield-alert"},
@@ -161,6 +169,10 @@ OVERVIEW_SECTIONS = [
         _button("Afkeuren", "mdi:close-circle", "netwerkscanner_afkeuren"),
         _button("Alle openstaande goedkeuren", "mdi:check-all", "netwerkscanner_alles_goedkeuren", 12,
                 "Alle openstaande apparaten goedkeuren?"),
+    ]},
+    {"type": "grid", "cards": [
+        {"type": "heading", "heading": "Beveiliging", "heading_style": "subtitle", "icon": "mdi:shield-alert"},
+        {"type": "markdown", "content": SECURITY_LIST, "grid_options": {"columns": "full"}},
     ]},
     {"type": "grid", "cards": [
         {"type": "heading", "heading": "Laatste 5 wijzigingen", "heading_style": "subtitle", "icon": "mdi:history"},

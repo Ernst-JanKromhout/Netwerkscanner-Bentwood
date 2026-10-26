@@ -81,6 +81,27 @@ def recent_changes(db: Database, limit: int = 25) -> list[dict]:
     return result
 
 
+SECURITY_TYPES = ("intrusion", "login_failed")
+
+
+def security_events(db: Database, limit: int = 10) -> list[dict]:
+    """Laatste aanvallen en mislukte logins, nieuwste eerst."""
+    marks = ",".join("?" * len(SECURITY_TYPES))
+    rows = db.conn.execute(
+        f"SELECT * FROM events WHERE type IN ({marks}) ORDER BY id DESC LIMIT ?", (*SECURITY_TYPES, limit)
+    ).fetchall()
+    result = []
+    for e in rows:
+        d = json.loads(e["detail"])
+        result.append({
+            "tijd": _local(e["ts"]),
+            "soort": "Aanval" if e["type"] == "intrusion" else "Mislukte login",
+            "geblokkeerd": bool(d.get("blocked")) if e["type"] == "intrusion" else None,
+            "tekst": _line(db, e["type"], e["mac"], d),
+        })
+    return result
+
+
 def _local(ts: str | None) -> str:
     if not ts:
         return ""
@@ -118,6 +139,10 @@ def publish(db: Database, ha: HomeAssistant) -> None:
     ha.set_sensor("sensor.netwerkscanner_te_beoordelen", len(pending),
                   {"friendly_name": "Netwerk: te beoordelen", "unit_of_measurement": "apparaten",
                    "icon": "mdi:shield-search"})
+    security_today = [e for e in today if e["type"] in SECURITY_TYPES]
+    ha.set_sensor("sensor.netwerkscanner_aanvallen_vandaag", len(security_today),
+                  {"friendly_name": "Netwerk: aanvallen en mislukte logins vandaag", "unit_of_measurement": "meldingen",
+                   "icon": "mdi:shield-alert", "meldingen": security_events(db)})
     changes = recent_changes(db)
     ha.set_sensor("sensor.netwerkscanner_laatste_wijzigingen", changes[0]["tijd"] if changes else "geen",
                   {"friendly_name": "Netwerk: laatste wijzigingen", "icon": "mdi:history",
