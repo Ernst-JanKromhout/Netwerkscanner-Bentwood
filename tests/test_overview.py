@@ -5,7 +5,7 @@ from scanner.db import Database
 from scanner.engine import Engine, Sighting
 from scanner.nmap import Host
 from scanner.overview import devices, port_overview, recent_changes
-from scanner.ports import explain
+from scanner.ports import explain, risk
 
 T0 = datetime(2026, 10, 25, 12, 0, tzinfo=timezone.utc)
 
@@ -66,9 +66,16 @@ def test_port_overview_explains_each_port_once(tmp_path):
     assert [r["poort"] for r in rows] == ["22/tcp", "5000/tcp"]
     assert rows[0]["apparaten"] == ["nas", "pi"] and "SSH" in rows[0]["uitleg"]
     assert rows[1]["apparaten"] == ["nas"]
+    assert rows[0]["risico"] == "let op"
 
 
 def test_explain_falls_back_to_service():
     assert explain(22).startswith("SSH")
     assert explain(12345, "http") == "Webinterface (HTTP)"
     assert "Onbekende" in explain(12345)
+
+
+def test_risk_levels():
+    assert risk(23) == "hoog" and risk(445) == "hoog"
+    assert risk(22) == "let op" and risk(12345) == "let op"
+    assert risk(443) == "normaal"
