@@ -82,7 +82,12 @@ class Engine:
                 self._push(event_id, "Nieuw apparaat op je netwerk", "\n".join(lines))
             return True
 
-        changes: list[Change] = diff_identity(existing["ip"], existing["hostname"], s.ip, s.hostname)
+        hostname = s.hostname
+        if source != "unifi" and existing["hostname"]:
+            # DNS geeft soms een andere of ingekorte naam dan UniFi; zonder dit wisselt de naam elke scan.
+            hostname = existing["hostname"]
+            fields.pop("hostname", None)
+        changes: list[Change] = diff_identity(existing["ip"], existing["hostname"], s.ip, hostname)
         came_back = not existing["present"]
         for change in changes:
             self.db.add_event(ts, change.type, s.mac, change.detail)

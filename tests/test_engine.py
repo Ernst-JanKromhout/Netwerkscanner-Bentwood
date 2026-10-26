@@ -112,3 +112,12 @@ def test_report_groups_events(setup):
 def test_empty_report(tmp_path):
     text, count = build_report(Database(tmp_path / "leeg.db"), "2000", "3000")
     assert (text, count) == ("Geen wijzigingen.", 0)
+
+
+def test_dns_name_does_not_flap_against_unifi(setup):
+    db, engine, _, _ = setup
+    nas = "00:11:32:00:00:01"
+    engine.handle_sightings([Sighting(nas, "192.168.1.10", "Cloud-Key-Gen2")], "ping", T0)
+    engine.handle_sightings([Sighting(nas, "192.168.1.10", "nas")], "unifi", T0)
+    assert db.device(nas)["hostname"] == "nas"
+    assert not [e for e in db.recent_events(50) if e["type"] == "hostname_changed"]
