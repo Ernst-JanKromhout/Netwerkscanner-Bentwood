@@ -4,7 +4,8 @@ from scanner.config import Config
 from scanner.db import Database
 from scanner.engine import Engine, Sighting
 from scanner.nmap import Host
-from scanner.overview import devices, recent_changes
+from scanner.overview import devices, port_overview, recent_changes
+from scanner.ports import explain
 
 T0 = datetime(2026, 10, 25, 12, 0, tzinfo=timezone.utc)
 
@@ -46,3 +47,28 @@ def test_recent_changes_newest_first(tmp_path):
     assert changes[0]["type"] == "new_device" and "camera" in changes[0]["tekst"]
     assert changes[0]["soort"] == "Nieuwe apparaten"
     assert changes[-1]["type"] == "baseline"
+
+
+def test_port_overview_explains_each_port_once(tmp_path):
+    db = Database(tmp_path / "t.db")
+    engine = Engine(db, Config(), FakeHA())
+    engine.handle_sightings([
+        Sighting("00:11:32:00:00:01", "192.168.1.10", "nas"),
+        Sighting("00:11:32:00:00:02", "192.168.1.11", "pi"),
+    ], "unifi", T0)
+    for mac, ip in (("00:11:32:00:00:01", "192.168.1.10"), ("00:11:32:00:00:02", "192.168.1.11")):
+        engine.handle_scan(mac, ip, "top", Host(ip, True, ports={(22, "tcp"): {"service": "ssh"}}), 5, T0)
+    engine.handle_scan("00:11:32:00:00:01", "192.168.1.10", "top",
+                       Host("192.168.1.10", True, ports={(22, "tcp"): {"service": "ssh"},
+                                                         (5000, "tcp"): {"service": "http"}}), 5, T0)
+
+    rows = port_overview(devices(db), db)
+    assert [r["poort"] for r in rows] == ["22/tcp", "5000/tcp"]
+    assert rows[0]["apparaten"] == ["nas", "pi"] and "SSH" in rows[0]["uitleg"]
+    assert rows[1]["apparaten"] == ["nas"]
+
+
+def test_explain_falls_back_to_service():
+    assert explain(22).startswith("SSH")
+    assert explain(12345, "http") == "Webinterface (HTTP)"
+    assert "Onbekende" in explain(12345)

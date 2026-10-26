@@ -13,6 +13,10 @@ from .config import Config, normalize_mac
 log = logging.getLogger(__name__)
 
 
+class UniFiError(Exception):
+    """UniFi antwoordde, maar niet bruikbaar. Bij de volgende ronde gewoon opnieuw."""
+
+
 @dataclass
 class Client:
     mac: str
@@ -67,7 +71,10 @@ class UniFiClient:
             self._login()
             resp = self.session.get(f"{self.base}{self.api_prefix}/api/s/{self.cfg.unifi_site}/{path}", timeout=15)
         resp.raise_for_status()
-        return resp.json().get("data", [])
+        try:
+            return resp.json().get("data", [])
+        except ValueError as exc:
+            raise UniFiError(f"onvolledig antwoord op {path}: {exc}") from exc
 
     def active_clients(self) -> list[Client]:
         """Clients plus de UniFi-apparaten zelf (switches, access points), die niet in stat/sta staan."""

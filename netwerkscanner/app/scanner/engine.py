@@ -12,6 +12,7 @@ from .db import Database, iso, label, utcnow
 from .diff import Change, diff_identity, diff_ports, is_random_mac
 from .homeassistant import HomeAssistant
 from .nmap import Host
+from .ports import explain
 
 log = logging.getLogger(__name__)
 
@@ -82,7 +83,12 @@ class Engine:
                 self._push(event_id, "Nieuw apparaat op je netwerk", "\n".join(lines))
             return True
 
-        changes: list[Change] = diff_identity(existing["ip"], existing["hostname"], s.ip, s.hostname)
+        hostname = s.hostname
+        if source != "unifi" and existing["hostname"]:
+            # DNS geeft soms een andere of ingekorte naam dan UniFi; zonder dit wisselt de naam elke scan.
+            hostname = existing["hostname"]
+            fields.pop("hostname", None)
+        changes: list[Change] = diff_identity(existing["ip"], existing["hostname"], s.ip, hostname)
         came_back = not existing["present"]
         for change in changes:
             self.db.add_event(ts, change.type, s.mac, change.detail)
@@ -135,7 +141,7 @@ class Engine:
                 d = change.detail
                 service = " ".join(v for v in (d["service"], d["version"]) if v) or "onbekende dienst"
                 self._push(event_id, "Nieuwe open poort",
-                           f"{describe(device)}\nPoort {d['port']}/{d['proto']}: {service}")
+                           f"{describe(device)}\nPoort {d['port']}/{d['proto']}: {service}\n{explain(d['port'], d['service'])}")
 
     def _push(self, event_id: int, title: str, message: str) -> None:
         url = self.cfg.dashboard_path

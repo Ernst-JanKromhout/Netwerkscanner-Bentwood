@@ -67,6 +67,12 @@ Die naam gaat voor alles: de naam uit UniFi, de hostnaam en de fabrikant. Hij bl
 later een ander IP of een andere hostnaam krijgt. Sla je een lege naam op, dan komt de oude naam terug.
 In het dagrapport staat de wijziging onder *Zelf hernoemd*.
 
+## Wat betekenen de poorten
+
+Onder **Wat betekenen de poorten** staat elke open poort die de scanner vond, met in één zin waar hij voor dient
+en op welk apparaat hij openstaat. Dezelfde uitleg staat in de melding bij een nieuwe open poort.
+Zie je een poort die je niet verwacht, zoals Telnet (23) of Extern bureaublad (3389), zet die dienst dan uit.
+
 ## Instellen
 
 1. Maak in UniFi een lokaal account met alleen leesrechten en vul `unifi_username` en `unifi_password` in.

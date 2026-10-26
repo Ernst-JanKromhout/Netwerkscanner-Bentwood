@@ -9,6 +9,8 @@ import threading
 import time
 from datetime import datetime, timedelta
 
+import requests
+
 from . import nmap, setup_ha
 from .config import DB_PATH, Config
 from .db import Database, iso, utcnow
@@ -19,7 +21,7 @@ from .overview import publish
 from .report import build_report, build_summary
 from .review import parse
 from .schedule import next_daily, nightly_kind
-from .unifi import UniFiClient
+from .unifi import UniFiClient, UniFiError
 
 log = logging.getLogger("netwerkscanner")
 
@@ -69,7 +71,11 @@ class Scanner:
         self._event_db: Database | None = None
 
     def poll_unifi(self) -> None:
-        clients = self.unifi.active_clients()
+        try:
+            clients = self.unifi.active_clients()
+        except (UniFiError, requests.RequestException) as exc:
+            log.warning("UniFi uitlezen mislukt, volgende ronde opnieuw: %s", exc)
+            return
         self.engine.handle_sightings(
             [Sighting(c.mac, c.ip, c.hostname, c.name, c.vendor, c.network) for c in clients], "unifi"
         )

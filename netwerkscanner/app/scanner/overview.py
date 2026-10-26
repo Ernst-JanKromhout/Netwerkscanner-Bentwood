@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 
 from .db import Database, iso, label, utcnow
 from .homeassistant import HomeAssistant
+from .ports import explain
 from .report import SECTIONS, _line
 from .review import NAME_SELECT, NOTHING_PENDING, SELECT_ENTITY, option_label
 
@@ -40,6 +41,22 @@ def devices(db: Database) -> list[dict]:
         })
     result.sort(key=lambda r: (not r["online"], _ip_key(r["ip"])))
     return result
+
+
+def port_overview(device_rows: list[dict], db: Database) -> list[dict]:
+    """Elke open poort die ergens voorkomt, met uitleg en op welke apparaten."""
+    names = {d["mac"]: d["naam"] for d in device_rows}
+    found: dict[tuple, dict] = {}
+    for mac, open_ports in db.latest_ports().items():
+        for p in open_ports:
+            row = found.setdefault((p["port"], p["proto"]), {
+                "poort": f"{p['port']}/{p['proto']}",
+                "uitleg": explain(p["port"], p.get("service")),
+                "apparaten": [],
+            })
+            if mac in names and names[mac] not in row["apparaten"]:
+                row["apparaten"].append(names[mac])
+    return [found[k] for k in sorted(found)]
 
 
 def _status(device) -> str:
@@ -88,9 +105,14 @@ def publish(db: Database, ha: HomeAssistant) -> None:
     ha.set_sensor("sensor.netwerkscanner_gebeurtenissen_vandaag", len(today),
                   {"friendly_name": "Netwerk: wijzigingen vandaag", "unit_of_measurement": "wijzigingen",
                    "icon": "mdi:lan-pending"})
+    device_rows = devices(db)
     ha.set_sensor("sensor.netwerkscanner_apparaten", known,
                   {"friendly_name": "Netwerk: apparaten", "unit_of_measurement": "apparaten",
-                   "icon": "mdi:devices", "apparaten": devices(db)})
+                   "icon": "mdi:devices", "apparaten": device_rows})
+    open_ports = port_overview(device_rows, db)
+    ha.set_sensor("sensor.netwerkscanner_poorten", len(open_ports),
+                  {"friendly_name": "Netwerk: soorten open poorten", "unit_of_measurement": "poorten",
+                   "icon": "mdi:door-open", "poorten": open_ports})
     ha.set_sensor("sensor.netwerkscanner_te_beoordelen", len(pending),
                   {"friendly_name": "Netwerk: te beoordelen", "unit_of_measurement": "apparaten",
                    "icon": "mdi:shield-search"})
