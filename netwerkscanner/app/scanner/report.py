@@ -7,6 +7,8 @@ import json
 from .db import Database, label
 
 SECTIONS = [
+    ("intrusion", "Aanvallen (IPS van de gateway)"),
+    ("login_failed", "Mislukte inlogpogingen op Home Assistant"),
     ("new_device", "Nieuwe apparaten"),
     ("rejected", "Afgekeurd"),
     ("approved", "Goedgekeurd"),
@@ -58,6 +60,11 @@ def _line(db: Database, type_: str, mac: str | None, d: dict) -> str:
         return f"{who}: {d.get('old')} naar {d.get('new')}"
     if type_ in ("approved", "rejected"):
         return f"{who} ({d.get('ip')}, {mac})"
+    if type_ == "intrusion":
+        blocked = "geblokkeerd" if d.get("blocked") else "niet geblokkeerd"
+        return f"{d.get('signature')} van {d.get('src')} naar {d.get('dst')} ({blocked})"
+    if type_ == "login_failed":
+        return f"van {d.get('host')} ({d.get('ip')})"
     if type_ == "baseline":
         return f"{d.get('devices')} apparaten vastgelegd als beginsituatie"
     return f"{who}: {json.dumps(d, ensure_ascii=False)}"

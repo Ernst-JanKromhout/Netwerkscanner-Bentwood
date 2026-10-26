@@ -15,11 +15,12 @@ from . import nmap, setup_ha
 from .config import DB_PATH, Config
 from .db import Database, iso, utcnow
 from .engine import Engine, Sighting
-from .ha_events import EventListener
+from .ha_events import NOTIFICATIONS, EventListener
 from .homeassistant import HomeAssistant
 from .overview import publish
 from .report import build_report, build_summary
 from .review import parse
+from .security import login_notifications, parse_login, parse_threat
 from .schedule import next_daily, nightly_kind
 from .unifi import UniFiClient, UniFiError
 
@@ -113,14 +114,35 @@ class Scanner:
     def update_sensors(self) -> None:
         publish(self.db, self.ha)
 
+    def poll_threats(self) -> None:
+        now_ms = int(time.time() * 1000)
+        since = int(self.db.get_meta("last_threat_ms") or now_ms - 3600 * 1000)
+        try:
+            records = self.unifi.threat_records(since, now_ms)
+        except (UniFiError, requests.RequestException) as exc:
+            log.warning("IPS-meldingen uit UniFi lezen mislukt: %s", exc)
+            return
+        threats = [t for t in (parse_threat(r) for r in records) if t is not None]
+        count = self.engine.handle_threats(threats)
+        if count:
+            log.info("%d nieuwe IPS-melding(en) uit UniFi", count)
+
     def on_ha_event(self, event_type: str, data: dict) -> None:
         """Draait in de websocket-thread, dus met een eigen databaseverbinding."""
+        if self._event_db is None:
+            self._event_db = Database(DB_PATH)
+        if event_type == NOTIFICATIONS:
+            for message in login_notifications(data):
+                login = parse_login(message)
+                if login:
+                    log.warning("Mislukte inlogpoging op HA van %s (%s)", *login)
+                    Engine(self._event_db, self.cfg, self.ha).handle_failed_login(*login)
+                    publish(self._event_db, self.ha)
+            return
         parsed = parse(event_type, data)
         if parsed is None:
             return
         action, mac, name = parsed
-        if self._event_db is None:
-            self._event_db = Database(DB_PATH)
         count = Engine(self._event_db, self.cfg, self.ha).review(action, mac, name=name)
         log.info("Beoordeling %s voor %s: %d apparaat/apparaten", action, mac or "alle openstaande", count)
         publish(self._event_db, self.ha)
@@ -135,6 +157,7 @@ class Scanner:
             "ping": now + timedelta(seconds=30),
             "absent": now + timedelta(minutes=5),
             "sensors": now + timedelta(minutes=1),
+            "threats": now + timedelta(seconds=45),
             "nightly": next_daily(now, self.cfg.nightly_scan_time),
             "report": next_daily(now, self.cfg.report_time),
         }
@@ -155,6 +178,8 @@ class Scanner:
     def _run_task(self, task: str, when: datetime) -> None:
         if task == "unifi" and self.unifi is not None:
             self.poll_unifi()
+        elif task == "threats" and self.unifi is not None:
+            self.poll_threats()
         elif task == "ping":
             self.ping_sweep()
         elif task == "absent":
@@ -171,7 +196,7 @@ class Scanner:
             return now + timedelta(seconds=self.cfg.unifi_interval_seconds)
         if task == "ping":
             return now + timedelta(minutes=self.cfg.ping_interval_minutes)
-        if task in ("absent", "sensors"):
+        if task in ("absent", "sensors", "threats"):
             return now + timedelta(minutes=5)
         if task == "nightly":
             return next_daily(now, self.cfg.nightly_scan_time)

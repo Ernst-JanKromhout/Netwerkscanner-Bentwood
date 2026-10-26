@@ -1,4 +1,4 @@
-"""Luistert via de websocket van Home Assistant naar knoppen voor goedkeuren en afkeuren."""
+"""Luistert via de websocket van Home Assistant naar de knoppen en naar meldingen over mislukte logins."""
 
 from __future__ import annotations
 
@@ -14,6 +14,8 @@ from .review import EVENT_TYPES
 log = logging.getLogger(__name__)
 
 WS_URL = "ws://supervisor/core/websocket"
+NOTIFICATIONS = "persistent_notification"  # event_type waaronder we meldingen doorgeven
+_NOTIFICATIONS_ID = 100
 
 
 class EventListener(threading.Thread):
@@ -45,7 +47,8 @@ class EventListener(threading.Thread):
                 raise RuntimeError(f"websocket-authenticatie mislukt: {reply.get('type')}")
             for i, event_type in enumerate(EVENT_TYPES, start=1):
                 ws.send(json.dumps({"id": i, "type": "subscribe_events", "event_type": event_type}))
-            log.info("Luistert naar knoppen voor goedkeuren en afkeuren")
+            ws.send(json.dumps({"id": _NOTIFICATIONS_ID, "type": "persistent_notification/subscribe"}))
+            log.info("Luistert naar knoppen en naar mislukte logins")
             ws.settimeout(None)
             while True:
                 message = json.loads(ws.recv())
@@ -53,7 +56,10 @@ class EventListener(threading.Thread):
                     continue
                 event = message.get("event", {})
                 try:
-                    self.on_event(event.get("event_type", ""), event.get("data", {}))
+                    if message.get("id") == _NOTIFICATIONS_ID:
+                        self.on_event(NOTIFICATIONS, event)
+                    else:
+                        self.on_event(event.get("event_type", ""), event.get("data", {}))
                 except Exception:
                     log.exception("Verwerken van HA-event mislukt")
         finally:

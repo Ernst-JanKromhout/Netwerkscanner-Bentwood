@@ -13,6 +13,7 @@ from .diff import Change, diff_identity, diff_ports, is_random_mac
 from .homeassistant import HomeAssistant
 from .nmap import Host
 from .ports import RISK_LABELS, explain, risk
+from .security import Threat
 
 log = logging.getLogger(__name__)
 
@@ -150,6 +151,43 @@ class Engine:
         message += "\nBeoordeel het in het dashboard Netwerk."
         if self.ha.notify(self.cfg.notify_services, title, message, url):
             self.db.mark_notified(event_id)
+
+    # beveiliging
+
+    def handle_threats(self, threats: list[Threat], now: datetime | None = None) -> int:
+        """Slaat nieuwe IPS-meldingen op en stuurt één push per ronde. Geeft het aantal nieuwe terug."""
+        now = now or utcnow()
+        last = int(self.db.get_meta("last_threat_ms") or 0)
+        new = sorted((t for t in threats if t.ts_ms > last), key=lambda t: t.ts_ms)
+        if not new:
+            return 0
+        event_id = 0
+        for t in new:
+            event_id = self.db.add_event(iso(now), "intrusion", None, t.detail())
+        self.db.set_meta("last_threat_ms", str(new[-1].ts_ms))
+        blocked = sum(t.blocked for t in new)
+        latest = new[-1]
+        title = "Aanval op je netwerk" if len(new) == 1 else f"{len(new)} aanvallen op je netwerk"
+        status = "geblokkeerd" if blocked == len(new) else f"{blocked} van {len(new)} geblokkeerd"
+        self._push(event_id, title,
+                   f"{status}\nLaatste: {latest.signature}\nVan {self._who(latest.src)} naar {self._who(latest.dst)}")
+        return len(new)
+
+    def handle_failed_login(self, host: str, ip: str, now: datetime | None = None) -> None:
+        """Mislukte login op HA. Push hooguit één keer per uur per IP, het rapport krijgt ze allemaal."""
+        now = now or utcnow()
+        event_id = self.db.add_event(iso(now), "login_failed", None, {"ip": ip, "host": host})
+        key = f"login_push_{ip}"
+        previous = self.db.get_meta(key)
+        if previous and datetime.fromisoformat(previous) > now - timedelta(hours=1):
+            return
+        self.db.set_meta(key, iso(now))
+        self._push(event_id, "Mislukte inlogpoging op Home Assistant", f"Van {self._who(ip)}")
+
+    def _who(self, address: str) -> str:
+        """IP (met poort) plus de naam als het een apparaat uit je eigen netwerk is."""
+        device = self.db.device_by_ip(address.rsplit(":", 1)[0] if address.count(":") == 1 else address)
+        return f"{label(device, address)} ({address})" if device else address
 
     # beoordelen
 

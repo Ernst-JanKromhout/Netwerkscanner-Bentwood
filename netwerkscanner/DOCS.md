@@ -73,6 +73,14 @@ Onder **Wat betekenen de poorten** staat elke open poort die de scanner vond, me
 en op welk apparaat hij openstaat. Dezelfde uitleg staat in de melding bij een nieuwe open poort.
 Zie je een poort die je niet verwacht, zoals Telnet (23) of Extern bureaublad (3389), zet die dienst dan uit.
 
+## Aanvallen en mislukte logins
+
+De scanner leest elke 5 minuten de meldingen van IDS/IPS op je UniFi-gateway uit. Zet die in UniFi aan
+(CyberSecure of Threat Management, het liefst op *Detect and block*), anders is er niets te lezen.
+Daarnaast ziet de scanner het als iemand met een verkeerd wachtwoord probeert in te loggen op Home Assistant.
+Je krijgt een pushmelding, het blok **Beveiliging** op het dashboard toont de laatste vijf, en het dagrapport
+heeft ze bovenaan. 🛡️ betekent geblokkeerd, 🚨 dat de gateway het alleen zag of dat het een mislukte login was.
+
 ## Instellen
 
 1. Maak in UniFi een lokaal account met alleen leesrechten en vul `unifi_username` en `unifi_password` in.

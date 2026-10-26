@@ -1,5 +1,12 @@
 # Wat is er nieuw
 
+## 0.1.9
+
+- Bewaking op aanvallen: de scanner leest elke 5 minuten de IPS-meldingen van je UniFi-gateway uit.
+- Mislukte inlogpogingen op Home Assistant worden opgemerkt.
+- Beide geven een pushmelding (mislukte logins hooguit één keer per uur per IP) en staan in het dagrapport.
+- Op het dashboard: een rode tegel *Aanvallen vandaag* en een blok *Beveiliging* met de laatste meldingen.
+
 ## 0.1.8
 
 - Elke open poort krijgt een kleur naar risico: 🔴 hoog, 🟠 let op, 🟢 normaal. De gevaarlijkste staan bovenaan.
