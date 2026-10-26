@@ -88,17 +88,25 @@ SCRIPTS = {
     }
 }
 
-DEVICES_TABLE = (
-    "{% set ds = state_attr('sensor.netwerkscanner_apparaten', 'apparaten') or [] %}"
-    "{% if ds %}| | Naam | IP | Open poorten |\n|:-:|---|---|---|\n"
-    "{% for d in ds %}{% set p = d.poorten | map('regex_replace', '/.*', '') | list %}"
-    "| {{ '❌' if d.status == 'afgekeurd' else ('✅' if d.status == 'goedgekeurd' else '⚠️') }}"
-    "{{ '' if d.online else '💤' }} | {{ d.naam }} | {{ d.ip }} | "
-    "{{ (p[:4] | join(', ') ~ (' +' ~ (p | length - 4) if p | length > 4 else '')) if p "
-    "else ('·' if d.gescand else '…') }} |\n"
-    "{% endfor %}\n\n✅ goedgekeurd · ⚠️ te beoordelen · ❌ afgekeurd · 💤 offline · … nog niet gescand"
-    "{% else %}*Nog geen gegevens.*{% endif %}"
-)
+def devices_table(part: int, parts: int = 3) -> str:
+    """Eén deel van de apparatenlijst, zodat de tabellen op een breed scherm naast elkaar passen."""
+    return (
+        "{% set all = state_attr('sensor.netwerkscanner_apparaten', 'apparaten') or [] %}"
+        f"{{% set n = (all | length / {parts}) | round(0, 'ceil') | int %}}"
+        f"{{% set ds = all[{part} * n:{part + 1} * n] %}}"
+        "{% if ds %}| | Naam | IP | Poorten |\n|:-:|---|---|---|\n"
+        "{% for d in ds %}{% set p = d.poorten | map('regex_replace', '/.*', '') | list %}"
+        "| {{ '❌' if d.status == 'afgekeurd' else ('✅' if d.status == 'goedgekeurd' else '⚠️') }}"
+        "{{ '' if d.online else '💤' }} | {{ d.naam }} | {{ d.ip }} | "
+        "{{ (p[:3] | join(', ') ~ (' +' ~ (p | length - 3) if p | length > 3 else '')) if p "
+        "else ('–' if d.gescand else '…') }} |\n"
+        "{% endfor %}"
+        + ("{% else %}*Nog geen gegevens.*" if part == 0 else "")
+        + "{% endif %}"
+    )
+
+
+LEGEND = "✅ goedgekeurd · ⚠️ te beoordelen · ❌ afgekeurd · 💤 offline · … nog niet gescand · – geen open poorten"
 
 CHANGES_LIST = (
     "{% set ws = (state_attr('sensor.netwerkscanner_laatste_wijzigingen', 'wijzigingen') or [])[:5] %}"
@@ -142,7 +150,8 @@ OVERVIEW_SECTIONS = [
     ]},
     {"type": "grid", "column_span": 3, "cards": [
         {"type": "heading", "heading": "Apparaten", "icon": "mdi:devices"},
-        {"type": "markdown", "content": DEVICES_TABLE, "grid_options": {"columns": "full"}},
+        *[{"type": "markdown", "content": devices_table(i), "grid_options": {"columns": 12}} for i in range(3)],
+        {"type": "markdown", "text_only": True, "content": LEGEND, "grid_options": {"columns": "full"}},
     ]},
 ]
 
