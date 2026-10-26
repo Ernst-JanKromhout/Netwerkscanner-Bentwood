@@ -88,164 +88,75 @@ SCRIPTS = {
     }
 }
 
-SECTIONS = [
-    {
-        "type": "grid",
-        "cards": [
-            {
-                "type": "heading",
-                "heading": "Te beoordelen",
-                "icon": "mdi:shield-search"
-            },
-            {
-                "type": "tile",
-                "entity": "sensor.netwerkscanner_te_beoordelen",
-                "name": "Openstaand",
-                "grid_options": {
-                    "columns": 12
-                }
-            },
-            {
-                "type": "entities",
-                "entities": [
-                    {
-                        "entity": "input_select.netwerkscanner_te_beoordelen",
-                        "name": "Apparaat"
-                    }
-                ],
-                "grid_options": {
-                    "columns": 12
-                }
-            },
-            {
-                "type": "button",
-                "name": "Goedkeuren",
-                "icon": "mdi:check-circle",
-                "show_state": False,
-                "tap_action": {
-                    "action": "perform-action",
-                    "perform_action": "script.netwerkscanner_goedkeuren"
-                },
-                "grid_options": {
-                    "columns": 6,
-                    "rows": 2
-                }
-            },
-            {
-                "type": "button",
-                "name": "Afkeuren",
-                "icon": "mdi:close-circle",
-                "show_state": False,
-                "tap_action": {
-                    "action": "perform-action",
-                    "perform_action": "script.netwerkscanner_afkeuren"
-                },
-                "grid_options": {
-                    "columns": 6,
-                    "rows": 2
-                }
-            },
-            {
-                "type": "button",
-                "name": "Alle openstaande goedkeuren",
-                "icon": "mdi:check-all",
-                "show_state": False,
-                "tap_action": {
-                    "action": "perform-action",
-                    "perform_action": "script.netwerkscanner_alles_goedkeuren",
-                    "confirmation": {
-                        "text": "Alle openstaande apparaten goedkeuren?"
-                    }
-                },
-                "grid_options": {
-                    "columns": 12,
-                    "rows": 1
-                }
-            },
-            {"type": "heading", "heading": "Naam geven", "icon": "mdi:rename"},
-            {
-                "type": "entities",
-                "entities": [
-                    {"entity": "input_select.netwerkscanner_apparaat", "name": "Apparaat"},
-                    {"entity": "input_text.netwerkscanner_naam", "name": "Nieuwe naam"}
-                ],
-                "grid_options": {"columns": 12}
-            },
-            {
-                "type": "button",
-                "name": "Naam opslaan",
-                "icon": "mdi:content-save",
-                "show_state": False,
-                "tap_action": {"action": "perform-action", "perform_action": "script.netwerkscanner_naam_geven"},
-                "grid_options": {"columns": 12, "rows": 1}
-            },
-            {
-                "type": "heading",
-                "heading": "Nu",
-                "icon": "mdi:lan"
-            },
-            {
-                "type": "tile",
-                "entity": "sensor.netwerkscanner_apparaten_online",
-                "name": "Online",
-                "grid_options": {
-                    "columns": 6
-                }
-            },
-            {
-                "type": "tile",
-                "entity": "sensor.netwerkscanner_gebeurtenissen_vandaag",
-                "name": "Wijzigingen vandaag",
-                "grid_options": {
-                    "columns": 6
-                }
-            },
-            {
-                "type": "history-graph",
-                "title": "Apparaten online, laatste 24 uur",
-                "hours_to_show": 24,
-                "entities": [
-                    {
-                        "entity": "sensor.netwerkscanner_apparaten_online",
-                        "name": "Online"
-                    }
-                ],
-                "grid_options": {
-                    "columns": 12
-                }
-            }
-        ]
-    },
-    {
-        "type": "grid",
-        "column_span": 2,
-        "cards": [
-            {
-                "type": "heading",
-                "heading": "Apparaten",
-                "icon": "mdi:devices"
-            },
-            {
-                "type": "markdown",
-                "grid_options": {
-                    "columns": "full"
-                },
-                "content": "✅ goedgekeurd · ⚠️ te beoordelen · ❌ afgekeurd · 💤 offline\n\n{% set ds = state_attr('sensor.netwerkscanner_apparaten', 'apparaten') or [] %}{% if ds %}| | Naam | IP | Open poorten | Laatst gezien |\n|---|---|---|---|---|\n{% for d in ds %}| {{ '❌' if d.status == 'afgekeurd' else ('✅' if d.status == 'goedgekeurd' else '⚠️') }}{{ '' if d.online else ' 💤' }} | {{ d.naam }} | {{ d.ip }} | {{ d.poorten | join(', ') if d.poorten else ('geen' if d.gescand else 'nog niet gescand') }} | {{ d.laatst_gezien }} |\n{% endfor %}{% else %}*Nog geen gegevens.*{% endif %}\n"
-            },
-            {
-                "type": "heading",
-                "heading": "Laatste wijzigingen",
-                "icon": "mdi:history"
-            },
-            {
-                "type": "markdown",
-                "grid_options": {
-                    "columns": "full"
-                },
-                "content": "{% set ws = state_attr('sensor.netwerkscanner_laatste_wijzigingen', 'wijzigingen') or [] %}{% if ws %}| Tijd | Soort | Wat |\n|---|---|---|\n{% for w in ws %}| {{ w.tijd }} | {{ w.soort }} | {{ w.tekst }} |\n{% endfor %}{% else %}*Nog geen wijzigingen.*{% endif %}\n"
-            }
-        ]
-    }
+DEVICES_TABLE = (
+    "{% set ds = state_attr('sensor.netwerkscanner_apparaten', 'apparaten') or [] %}"
+    "{% if ds %}| | Naam | IP | Open poorten |\n|:-:|---|---|---|\n"
+    "{% for d in ds %}{% set p = d.poorten | map('regex_replace', '/.*', '') | list %}"
+    "| {{ '❌' if d.status == 'afgekeurd' else ('✅' if d.status == 'goedgekeurd' else '⚠️') }}"
+    "{{ '' if d.online else '💤' }} | {{ d.naam }} | {{ d.ip }} | "
+    "{{ (p[:4] | join(', ') ~ (' +' ~ (p | length - 4) if p | length > 4 else '')) if p "
+    "else ('·' if d.gescand else '…') }} |\n"
+    "{% endfor %}\n\n✅ goedgekeurd · ⚠️ te beoordelen · ❌ afgekeurd · 💤 offline · … nog niet gescand"
+    "{% else %}*Nog geen gegevens.*{% endif %}"
+)
+
+CHANGES_LIST = (
+    "{% set ws = (state_attr('sensor.netwerkscanner_laatste_wijzigingen', 'wijzigingen') or [])[:5] %}"
+    "{% for w in ws %}**{{ w.tijd[6:] }}** {{ w.soort }}: {{ w.tekst }}\n\n"
+    "{% else %}*Nog geen wijzigingen.*{% endfor %}"
+)
+
+PENDING = {"condition": "numeric_state", "entity": "sensor.netwerkscanner_te_beoordelen", "above": 0}
+
+
+def _button(name: str, icon: str, script: str, columns: int = 6, confirm: str | None = None) -> dict:
+    action = {"action": "perform-action", "perform_action": f"script.{script}"}
+    if confirm:
+        action["confirmation"] = {"text": confirm}
+    return {"type": "button", "name": name, "icon": icon, "show_state": False, "tap_action": action,
+            "grid_options": {"columns": columns, "rows": 1}}
+
+
+OVERVIEW_SECTIONS = [
+    {"type": "grid", "cards": [
+        {"type": "heading", "heading": "Nu", "icon": "mdi:lan"},
+        {"type": "tile", "entity": "sensor.netwerkscanner_apparaten_online", "name": "Online", "color": "green",
+         "features": [{"type": "trend-graph", "hours_to_show": 24}], "grid_options": {"columns": 12}},
+        {"type": "tile", "entity": "sensor.netwerkscanner_te_beoordelen", "name": "Te beoordelen",
+         "color": "orange", "vertical": True, "grid_options": {"columns": 6, "rows": 2}},
+        {"type": "tile", "entity": "sensor.netwerkscanner_gebeurtenissen_vandaag", "name": "Wijzigingen vandaag",
+         "color": "blue", "vertical": True, "grid_options": {"columns": 6, "rows": 2}},
+    ]},
+    {"type": "grid", "visibility": [PENDING], "cards": [
+        {"type": "heading", "heading": "Te beoordelen", "icon": "mdi:shield-alert"},
+        {"type": "entities", "entities": [{"entity": "input_select.netwerkscanner_te_beoordelen",
+                                           "name": "Apparaat"}], "grid_options": {"columns": 12}},
+        _button("Goedkeuren", "mdi:check-circle", "netwerkscanner_goedkeuren"),
+        _button("Afkeuren", "mdi:close-circle", "netwerkscanner_afkeuren"),
+        _button("Alle openstaande goedkeuren", "mdi:check-all", "netwerkscanner_alles_goedkeuren", 12,
+                "Alle openstaande apparaten goedkeuren?"),
+    ]},
+    {"type": "grid", "cards": [
+        {"type": "heading", "heading": "Laatste 5 wijzigingen", "heading_style": "subtitle", "icon": "mdi:history"},
+        {"type": "markdown", "content": CHANGES_LIST, "grid_options": {"columns": "full"}},
+    ]},
+    {"type": "grid", "column_span": 3, "cards": [
+        {"type": "heading", "heading": "Apparaten", "icon": "mdi:devices"},
+        {"type": "markdown", "content": DEVICES_TABLE, "grid_options": {"columns": "full"}},
+    ]},
+]
+
+NAMES_SECTIONS = [
+    {"type": "grid", "cards": [
+        {"type": "heading", "heading": "Naam geven", "icon": "mdi:rename"},
+        {"type": "markdown", "text_only": True,
+         "content": "Kies een apparaat, typ een naam en druk op **Naam opslaan**. Leeg opslaan zet de oude naam terug."},
+        {"type": "entities", "entities": [
+            {"entity": "input_select.netwerkscanner_apparaat", "name": "Apparaat"},
+            {"entity": "input_text.netwerkscanner_naam", "name": "Nieuwe naam"},
+        ], "grid_options": {"columns": 12}},
+        _button("Naam opslaan", "mdi:content-save", "netwerkscanner_naam_geven", 12),
+    ]},
 ]
 
 
@@ -258,8 +169,12 @@ def split_path(dashboard_path: str) -> tuple[str, str]:
 
 
 def dashboard_config(view_path: str) -> dict:
-    return {"views": [{"title": "Overzicht", "path": view_path, "icon": "mdi:lan", "type": "sections",
-                       "max_columns": 3, "sections": SECTIONS}]}
+    return {"views": [
+        {"title": "Overzicht", "path": view_path, "icon": "mdi:lan", "type": "sections", "max_columns": 3,
+         "sections": OVERVIEW_SECTIONS},
+        {"title": "Namen", "path": "namen", "icon": "mdi:rename", "type": "sections", "max_columns": 2,
+         "sections": NAMES_SECTIONS},
+    ]}
 
 
 class WebSocket:
