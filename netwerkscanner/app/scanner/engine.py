@@ -12,6 +12,7 @@ from .db import Database, iso, label, utcnow
 from .diff import Change, diff_identity, diff_ports, is_random_mac
 from .homeassistant import HomeAssistant
 from .nmap import Host
+from .ports import explain
 
 log = logging.getLogger(__name__)
 
@@ -140,7 +141,7 @@ class Engine:
                 d = change.detail
                 service = " ".join(v for v in (d["service"], d["version"]) if v) or "onbekende dienst"
                 self._push(event_id, "Nieuwe open poort",
-                           f"{describe(device)}\nPoort {d['port']}/{d['proto']}: {service}")
+                           f"{describe(device)}\nPoort {d['port']}/{d['proto']}: {service}\n{explain(d['port'], d['service'])}")
 
     def _push(self, event_id: int, title: str, message: str) -> None:
         url = self.cfg.dashboard_path

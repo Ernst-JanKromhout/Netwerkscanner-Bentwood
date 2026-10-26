@@ -106,6 +106,21 @@ def devices_table(part: int, parts: int = 3) -> str:
     )
 
 
+def ports_table(part: int, parts: int = 3) -> str:
+    """Uitleg per open poort, verdeeld over `parts` kaarten naast elkaar."""
+    return (
+        "{% set all = state_attr('sensor.netwerkscanner_poorten', 'poorten') or [] %}"
+        f"{{% set n = (all | length / {parts}) | round(0, 'ceil') | int %}}"
+        f"{{% set ps = all[{part} * n:{part + 1} * n] %}}"
+        "{% if ps %}| Poort | Waarvoor | Op |\n|---|---|---|\n"
+        "{% for p in ps %}| **{{ p.poort.split('/')[0] }}** | {{ p.uitleg }} | "
+        "{{ p.apparaten[0] if p.apparaten | length == 1 else (p.apparaten | length ~ ' apparaten') }} |\n"
+        "{% endfor %}"
+        + ("{% else %}*Nog geen open poorten gevonden.*" if part == 0 else "")
+        + "{% endif %}"
+    )
+
+
 LEGEND = "✅ goedgekeurd · ⚠️ te beoordelen · ❌ afgekeurd · 💤 offline · … nog niet gescand · – geen open poorten"
 
 CHANGES_LIST = (
@@ -153,21 +168,22 @@ OVERVIEW_SECTIONS = [
         *[{"type": "markdown", "content": devices_table(i), "grid_options": {"columns": 12}} for i in range(3)],
         {"type": "markdown", "text_only": True, "content": LEGEND, "grid_options": {"columns": "full"}},
     ]},
-]
-
-NAMES_SECTIONS = [
     {"type": "grid", "cards": [
         {"type": "heading", "heading": "Naam geven", "icon": "mdi:rename"},
-        {"type": "markdown", "text_only": True,
-         "content": "Kies een apparaat, typ een naam en druk op **Naam opslaan**. Leeg opslaan zet de oude naam terug."},
         {"type": "entities", "entities": [
             {"entity": "input_select.netwerkscanner_apparaat", "name": "Apparaat"},
             {"entity": "input_text.netwerkscanner_naam", "name": "Nieuwe naam"},
         ], "grid_options": {"columns": 12}},
         _button("Naam opslaan", "mdi:content-save", "netwerkscanner_naam_geven", 12),
+        {"type": "markdown", "text_only": True,
+         "content": "Kies het apparaat, typ de naam en druk op **Naam opslaan**. Leeg opslaan zet de oude naam terug.",
+         "grid_options": {"columns": "full"}},
+    ]},
+    {"type": "grid", "column_span": 2, "cards": [
+        {"type": "heading", "heading": "Wat betekenen de poorten", "icon": "mdi:door-open"},
+        *[{"type": "markdown", "content": ports_table(i, 2), "grid_options": {"columns": 12}} for i in range(2)],
     ]},
 ]
-
 
 def split_path(dashboard_path: str) -> tuple[str, str]:
     """'/dashboard-netwerk/overzicht' -> ('dashboard-netwerk', 'overzicht')."""
@@ -181,8 +197,6 @@ def dashboard_config(view_path: str) -> dict:
     return {"views": [
         {"title": "Overzicht", "path": view_path, "icon": "mdi:lan", "type": "sections", "max_columns": 3,
          "sections": OVERVIEW_SECTIONS},
-        {"title": "Namen", "path": "namen", "icon": "mdi:rename", "type": "sections", "max_columns": 2,
-         "sections": NAMES_SECTIONS},
     ]}
 
 
