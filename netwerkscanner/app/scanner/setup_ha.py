@@ -1,12 +1,15 @@
 """Zet bij de start het dashboard, de keuzelijst en de knoppen in HA als ze nog ontbreken.
 
 Bestaat iets al, dan blijft het zoals het is: aanpassingen van de gebruiker worden nooit overschreven.
+Alleen een dashboard dat wij maakten en dat niet is aangepast, krijgt de indeling van de nieuwe versie.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
+from pathlib import Path
 
 from .homeassistant import HomeAssistant, supervisor_token
 from .review import NAME_SELECT, NAME_TEXT, NOTHING_PENDING, SELECT_ENTITY
@@ -70,6 +73,20 @@ SCRIPTS = {
                 "action": "input_text.set_value",
                 "target": {"entity_id": "input_text.netwerkscanner_naam"},
                 "data": {"value": ""}
+            }
+        ]
+    },
+    "netwerkscanner_scannen": {
+        "alias": "Netwerkscanner: apparaat nu scannen",
+        "icon": "mdi:radar",
+        "mode": "single",
+        "sequence": [
+            {
+                "event": "netwerkscanner_review",
+                "event_data": {
+                    "action": "scan",
+                    "device": "{{ states('input_select.netwerkscanner_apparaat') }}"
+                }
             }
         ]
     },
@@ -184,14 +201,16 @@ OVERVIEW_SECTIONS = [
         {"type": "markdown", "text_only": True, "content": LEGEND, "grid_options": {"columns": "full"}},
     ]},
     {"type": "grid", "cards": [
-        {"type": "heading", "heading": "Naam geven", "icon": "mdi:rename"},
+        {"type": "heading", "heading": "Apparaat", "icon": "mdi:rename"},
         {"type": "entities", "entities": [
             {"entity": "input_select.netwerkscanner_apparaat", "name": "Apparaat"},
             {"entity": "input_text.netwerkscanner_naam", "name": "Nieuwe naam"},
         ], "grid_options": {"columns": 12}},
-        _button("Naam opslaan", "mdi:content-save", "netwerkscanner_naam_geven", 12),
+        _button("Naam opslaan", "mdi:content-save", "netwerkscanner_naam_geven"),
+        _button("Nu scannen", "mdi:radar", "netwerkscanner_scannen"),
         {"type": "markdown", "text_only": True,
-         "content": "Kies het apparaat, typ de naam en druk op **Naam opslaan**. Leeg opslaan zet de oude naam terug.",
+         "content": ("Kies het apparaat. Typ een naam en druk op **Naam opslaan** (leeg zet de oude naam terug), "
+                     "of druk op **Nu scannen** voor een poortscan. De uitslag komt als melding in HA."),
          "grid_options": {"columns": "full"}},
     ]},
     {"type": "grid", "column_span": 2, "cards": [
@@ -246,8 +265,31 @@ class WebSocket:
         self.ws.close()
 
 
-def ensure(ha: HomeAssistant, dashboard_path: str, ws_factory=WebSocket) -> list[str]:
-    """Maakt wat ontbreekt en geeft terug wat er is aangemaakt."""
+DASHBOARD_HASH = Path("/data/dashboard.sha256")
+
+
+def _hash(config: dict) -> str:
+    return hashlib.sha256(json.dumps(config, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+
+
+def _ours_unchanged(current: dict, view_path: str, hash_path: Path) -> bool:
+    """Is dit dashboard door ons gemaakt en sindsdien niet met de hand aangepast?
+
+    Zonder opgeslagen hash (installaties van voor 0.1.10) herkennen we het aan de eerste view.
+    """
+    if hash_path.exists():
+        return hash_path.read_text().strip() == _hash(current)
+    views = current.get("views") or []
+    return bool(views) and views[0].get("path") == view_path and views[0].get("title") == "Overzicht"
+
+
+def ensure(ha: HomeAssistant, dashboard_path: str, ws_factory=WebSocket,
+           hash_path: Path = DASHBOARD_HASH) -> list[str]:
+    """Maakt wat ontbreekt en geeft terug wat er is aangemaakt of bijgewerkt.
+
+    Een dashboard dat wij maakten en dat niemand aanpaste, krijgt bij een nieuwe versie de nieuwe indeling.
+    Heb je het zelf aangepast, dan blijft het zoals het is.
+    """
     created = []
     for script_id, config in SCRIPTS.items():
         if ha.state(f"script.{script_id}") is None and ha.save_script(script_id, config):
@@ -266,8 +308,20 @@ def ensure(ha: HomeAssistant, dashboard_path: str, ws_factory=WebSocket) -> list
         elif url_path not in {d.get("url_path") for d in ws.call("lovelace/dashboards/list")}:
             ws.call("lovelace/dashboards/create", url_path=url_path, title="Netwerk", icon="mdi:lan",
                     show_in_sidebar=True, require_admin=False, mode="storage")
-            ws.call("lovelace/config/save", url_path=url_path, config=dashboard_config(view_path))
+            config = dashboard_config(view_path)
+            ws.call("lovelace/config/save", url_path=url_path, config=config)
+            hash_path.write_text(_hash(config))
             created.append(f"dashboard /{url_path}/{view_path}")
+        else:
+            config = dashboard_config(view_path)
+            try:
+                current = ws.call("lovelace/config", url_path=url_path) or {}
+            except RuntimeError:  # dashboard bestaat maar is nog leeg
+                current = {}
+            if current != config and _ours_unchanged(current, view_path, hash_path):
+                ws.call("lovelace/config/save", url_path=url_path, config=config)
+                hash_path.write_text(_hash(config))
+                created.append(f"nieuwe indeling dashboard /{url_path}/{view_path}")
     finally:
         ws.close()
     return created
