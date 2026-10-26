@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 
 from .db import Database, iso, label, utcnow
 from .homeassistant import HomeAssistant
-from .ports import explain
+from .ports import explain, risk
 from .report import SECTIONS, _line
 from .review import NAME_SELECT, NOTHING_PENDING, SELECT_ENTITY, option_label
 
@@ -52,11 +52,13 @@ def port_overview(device_rows: list[dict], db: Database) -> list[dict]:
             row = found.setdefault((p["port"], p["proto"]), {
                 "poort": f"{p['port']}/{p['proto']}",
                 "uitleg": explain(p["port"], p.get("service")),
+                "risico": risk(p["port"]),
                 "apparaten": [],
             })
             if mac in names and names[mac] not in row["apparaten"]:
                 row["apparaten"].append(names[mac])
-    return [found[k] for k in sorted(found)]
+    order = {"hoog": 0, "let op": 1, "normaal": 2}
+    return sorted(found.values(), key=lambda r: (order[r["risico"]], int(r["poort"].split("/")[0])))
 
 
 def _status(device) -> str:

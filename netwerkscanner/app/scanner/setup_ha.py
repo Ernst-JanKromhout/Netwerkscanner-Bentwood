@@ -113,13 +113,16 @@ def ports_table(part: int, parts: int = 3) -> str:
         f"{{% set n = (all | length / {parts}) | round(0, 'ceil') | int %}}"
         f"{{% set ps = all[{part} * n:{part + 1} * n] %}}"
         "{% if ps %}| Poort | Waarvoor | Op |\n|---|---|---|\n"
-        "{% for p in ps %}| **{{ p.poort.split('/')[0] }}** | {{ p.uitleg }} | "
+        "{% for p in ps %}| {{ {'hoog': '🔴', 'let op': '🟠'}.get(p.risico, '🟢') }} **{{ p.poort.split('/')[0] }}** | {{ p.uitleg }} | "
         "{{ p.apparaten[0] if p.apparaten | length == 1 else (p.apparaten | length ~ ' apparaten') }} |\n"
         "{% endfor %}"
         + ("{% else %}*Nog geen open poorten gevonden.*" if part == 0 else "")
         + "{% endif %}"
     )
 
+
+PORT_LEGEND = ("🔴 hoog: liever dicht, of alleen als je het zelf gebruikt · "
+               "🟠 let op: beheer of onversleuteld, check of je het kent · 🟢 normaal")
 
 LEGEND = "✅ goedgekeurd · ⚠️ te beoordelen · ❌ afgekeurd · 💤 offline · … nog niet gescand · – geen open poorten"
 
@@ -182,6 +185,7 @@ OVERVIEW_SECTIONS = [
     {"type": "grid", "column_span": 2, "cards": [
         {"type": "heading", "heading": "Wat betekenen de poorten", "icon": "mdi:door-open"},
         *[{"type": "markdown", "content": ports_table(i, 2), "grid_options": {"columns": 12}} for i in range(2)],
+        {"type": "markdown", "text_only": True, "content": PORT_LEGEND, "grid_options": {"columns": "full"}},
     ]},
 ]
 

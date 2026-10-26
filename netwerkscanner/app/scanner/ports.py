@@ -6,6 +6,7 @@ PORT_INFO: dict[int, str] = {
     21: "FTP, bestanden overzetten zonder versleuteling",
     22: "SSH, beheer op afstand via de opdrachtregel",
     23: "Telnet, onversleuteld beheer op afstand (liever uit)",
+    5900: "VNC, scherm overnemen op afstand",
     25: "SMTP, mail versturen",
     53: "DNS, zet namen om naar IP-adressen",
     80: "Webpagina zonder versleuteling (HTTP)",
@@ -60,6 +61,24 @@ SERVICE_INFO: dict[str, str] = {
     "rtsp": "Videostream",
     "upnp": "UPnP, apparaten regelen zelf poorten en vinden elkaar",
 }
+
+
+# Hoog: diensten die je nooit open wilt hebben voor iets dat je niet vertrouwt, vaak zonder versleuteling
+# of met een lange geschiedenis van lekken. Let op: beheer of onversleuteld verkeer, prima als je het zelf gebruikt.
+HIGH = {21, 23, 111, 139, 161, 445, 873, 2049, 3389, 4045, 5900}
+WATCH = {22, 80, 554, 548, 1443, 1883, 1935, 1984, 3000, 5000, 5080, 6668, 8000, 8080, 8181, 8800, 9000, 9900,
+         49160, 50001, 50002}
+
+RISK_LABELS = {"hoog": "🔴", "let op": "🟠", "normaal": "🟢"}
+
+
+def risk(port: int) -> str:
+    """'hoog', 'let op' of 'normaal'. Een onbekende poort is 'let op': je weet niet wat er draait."""
+    if port in HIGH:
+        return "hoog"
+    if port in WATCH or port not in PORT_INFO:
+        return "let op"
+    return "normaal"
 
 
 def explain(port: int, service: str | None = None) -> str:
