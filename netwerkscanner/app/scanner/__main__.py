@@ -13,7 +13,8 @@ import requests
 
 from . import nmap, setup_ha
 from .config import DB_PATH, Config
-from .db import Database, iso, utcnow
+from .db import Database, iso, label, utcnow
+from .ports import RISK_LABELS, explain, risk
 from .engine import Engine, Sighting
 from .ha_events import NOTIFICATIONS, EventListener
 from .homeassistant import HomeAssistant
@@ -36,6 +37,7 @@ class ScanWorker(threading.Thread):
         self.ha = ha
         self.jobs: queue.Queue[tuple[str, str, str]] = queue.Queue()
         self.pending: set[str] = set()
+        self.manual: set[str] = set()  # met de hand gestart: uitslag als melding in HA
         self.lock = threading.Lock()
 
     def request(self, mac: str, ip: str, kind: str) -> None:
@@ -54,11 +56,37 @@ class ScanWorker(threading.Thread):
                 host, duration = nmap.port_scan(ip, kind, self.cfg.top_ports)
                 engine.handle_scan(mac, ip, kind, host, duration)
                 log.info("Scan %s van %s klaar in %.0f s", kind, ip, duration)
+                if mac in self.manual:
+                    self._report_manual(db, mac, ip, host, duration)
             except Exception:
                 log.exception("Scan %s van %s mislukt", kind, ip)
             finally:
                 with self.lock:
                     self.pending.discard(mac)
+                    self.manual.discard(mac)
+
+    def scan_now(self, mac: str, ip: str) -> bool:
+        """Scan op verzoek; False als er al een scan van dit apparaat loopt of wacht."""
+        with self.lock:
+            if mac in self.pending:
+                return False
+            self.manual.add(mac)
+        self.request(mac, ip, "top")
+        return True
+
+    def _report_manual(self, db: Database, mac: str, ip: str, host, duration: float) -> None:
+        device = db.device(mac)
+        name = label(device, ip) if device else ip
+        if not host.up:
+            text = f"{name} ({ip}) reageerde niet."
+        elif not host.ports:
+            text = f"{name} ({ip}): geen open poorten."
+        else:
+            lines = [f"- {RISK_LABELS[risk(p)]} **{p}/{proto}** {explain(p, info.get('service'))}"
+                     for (p, proto), info in sorted(host.ports.items())]
+            text = f"{name} ({ip}), {len(host.ports)} open poort(en):\n" + "\n".join(lines)
+        self.ha.persistent_notification(f"netwerkscanner_scan_{mac.replace(':', '')}",
+                                        f"Scan klaar in {duration:.0f} s", text)
 
 
 class Scanner:
@@ -143,6 +171,14 @@ class Scanner:
         if parsed is None:
             return
         action, mac, name = parsed
+        if action == "scan":
+            device = self._event_db.device(mac)
+            if device is None or not device["ip"]:
+                log.warning("Nu scannen: geen IP bekend voor %s", mac)
+                return
+            started = self.worker.scan_now(mac, device["ip"])
+            log.info("Nu scannen van %s (%s): %s", device["ip"], mac, "gestart" if started else "loopt al")
+            return
         count = Engine(self._event_db, self.cfg, self.ha).review(action, mac, name=name)
         log.info("Beoordeling %s voor %s: %d apparaat/apparaten", action, mac or "alle openstaande", count)
         publish(self._event_db, self.ha)
@@ -219,7 +255,7 @@ def set_up_dashboard(cfg: Config) -> None:
         log.warning("Dashboard en knoppen aanmaken mislukt: %s", exc)
         return
     if created:
-        log.info("Aangemaakt in Home Assistant: %s", ", ".join(created))
+        log.info("Aangemaakt of bijgewerkt in Home Assistant: %s", ", ".join(created))
 
 
 def main() -> None:

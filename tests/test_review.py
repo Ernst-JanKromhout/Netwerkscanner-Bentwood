@@ -118,3 +118,9 @@ def test_rename_survives_new_sighting(tmp_path):
     engine.review("rename", CAM, T0, name="Tv woonkamer")
     engine.handle_sightings([Sighting(CAM, "192.168.30.40", "camera", name="UniFi-naam")], "unifi", T0)
     assert label(db.device(CAM)) == "Tv woonkamer"
+
+
+def test_parse_scan_action():
+    from scanner.review import parse
+    assert parse("netwerkscanner_review", {"action": "scan", "device": "nas (192.168.1.250) 00:11:32:aa:bb:cc"}) == (
+        "scan", "00:11:32:aa:bb:cc", None)

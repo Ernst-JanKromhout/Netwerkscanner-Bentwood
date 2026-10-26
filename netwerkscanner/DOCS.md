@@ -67,6 +67,11 @@ Die naam gaat voor alles: de naam uit UniFi, de hostnaam en de fabrikant. Hij bl
 later een ander IP of een andere hostnaam krijgt. Sla je een lege naam op, dan komt de oude naam terug.
 In het dagrapport staat de wijziging onder *Zelf hernoemd*.
 
+## Nu scannen
+
+Kies onder **Apparaat** een apparaat en druk op **Nu scannen**. Na een halve minuut tot een paar minuten
+krijg je in HA een melding met de open poorten, met kleur en uitleg.
+
 ## Wat betekenen de poorten
 
 Onder **Wat betekenen de poorten** staat elke open poort die de scanner vond, met in één zin waar hij voor dient

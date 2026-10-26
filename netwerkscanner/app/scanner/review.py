@@ -19,7 +19,7 @@ _MAC = re.compile(r"([0-9a-fA-F]{2}(?::[0-9a-fA-F]{2}){5})")
 def parse(event_type: str, data: dict) -> tuple[str, str | None, str | None] | None:
     """Geeft (actie, mac, naam) of None als het event niet voor ons is.
 
-    Event 'netwerkscanner_review' met action (approve, reject, approve_all, rename)
+    Event 'netwerkscanner_review' met action (approve, reject, approve_all, rename, scan)
     en 'device': de gekozen optie uit de keuzelijst, waarin de MAC staat.
     Bij rename staat de nieuwe naam in 'name'; leeg zet de naam terug.
     """
@@ -27,7 +27,7 @@ def parse(event_type: str, data: dict) -> tuple[str, str | None, str | None] | N
         action = data.get("action")
         if action == "approve_all":
             return action, None, None
-        if action not in ("approve", "reject", "rename"):
+        if action not in ("approve", "reject", "rename", "scan"):
             return None
         match = _MAC.search(str(data.get("mac") or data.get("device") or ""))
         if not match:

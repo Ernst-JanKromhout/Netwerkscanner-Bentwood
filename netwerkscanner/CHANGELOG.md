@@ -1,5 +1,10 @@
 # Wat is er nieuw
 
+## 0.1.10
+
+- Knop **Nu scannen** op het dashboard: kies een apparaat en start meteen een poortscan. De uitslag komt als melding in HA, met kleur en uitleg per poort.
+- Het dashboard krijgt bij een update automatisch de nieuwe indeling, zolang je het niet zelf hebt aangepast. Verwijderen en opnieuw aanmaken is niet meer nodig.
+
 ## 0.1.9
 
 - Bewaking op aanvallen: de scanner leest elke 5 minuten de IPS-meldingen van je UniFi-gateway uit.
