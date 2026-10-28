@@ -1,5 +1,5 @@
 name: Netwerkscanner
-version: "0.1.10"
+version: "0.1.11"
 slug: netwerkscanner
 description: Scant het thuisnetwerk, houdt historie bij en meldt nieuwe apparaten en poorten.
 url: https://github.com/Ernst-JanKromhout/Netwerkscanner-Bentwood
@@ -14,6 +14,8 @@ privileged:
   - NET_RAW
   - NET_ADMIN
 homeassistant_api: true
+services:
+  - mqtt:want
 options:
   unifi_host: ""
   unifi_username: ""

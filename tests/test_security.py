@@ -7,7 +7,7 @@ from scanner.db import Database
 from scanner.engine import Engine, Sighting
 from scanner.report import build_report
 from scanner.security import login_notifications, parse_login, parse_threat
-from scanner.unifi import UniFiClient
+from scanner.unifi import UniFiClient, UniFiError, system_log_rows
 
 T0 = datetime(2026, 10, 26, 12, 0, tzinfo=timezone.utc)
 IPS_EVENT = {
@@ -77,17 +77,100 @@ def test_failed_login_push_at_most_hourly_per_ip(tmp_path):
     assert count == 4 and "Mislukte inlogpogingen op Home Assistant (4)" in report
 
 
+# Een IPS-regel zoals system-log/all van UniFi Network 8.x en later hem geeft.
+SYSTEM_LOG_THREAT = {
+    "id": "evt-9", "timestamp": 1761480000000, "category": "SECURITY",
+    "subcategory": "SECURITY_INTRUSION_PREVENTION", "key": "THREAT_BLOCKED_V3", "event": "THREAT_BLOCKED",
+    "title_raw": "Threat Blocked",
+    "message_raw": "{SIGNATURE} from {SRC_IP} to {DST_CLIENT} was blocked.",
+    "parameters": {
+        "SRC_IP": {"id": "45.1.2.3", "name": "45.1.2.3"},
+        "SRC_PORT": {"id": "51234", "name": "51234"},
+        "DST_CLIENT": {"id": "00:11:32:00:00:01", "ip": "192.168.1.250", "name": "nas"},
+        "DST_PORT": {"id": "5001", "name": "5001"},
+        "SIGNATURE": {"id": "2009582", "name": "ET SCAN Nmap Scripting Engine"},
+        "CATEGORY": {"id": "scan", "name": "Attempted Information Leak"},
+    },
+}
+FIREWALL_BLOCK = {**SYSTEM_LOG_THREAT, "id": "evt-10", "subcategory": "SECURITY_FIREWALL",
+                  "key": "TRAFFIC_BLOCKED_KNOWN_SOURCE_CLIENT"}
+
+
 class FakeResponse:
-    def __init__(self, status, data=None):
+    def __init__(self, status, data=None, body=None, text=""):
         self.status_code = status
         self._data = data
+        self._body = body
+        self.text = text
 
     def raise_for_status(self):
         if self.status_code >= 400:
             raise requests.HTTPError(str(self.status_code))
 
     def json(self):
-        return {"data": self._data}
+        return self._body if self._body is not None else {"data": self._data}
+
+
+def unifi_client():
+    client = UniFiClient(Config(unifi_host="h", unifi_username="u", unifi_password="p"))
+    client.base = "https://h"
+    client.api_prefix = "/proxy/network"
+    return client
+
+
+def test_parse_threat_from_system_log():
+    t = parse_threat(SYSTEM_LOG_THREAT)
+    assert (t.key, t.ts_ms, t.src, t.dst) == ("evt-9", 1761480000000, "45.1.2.3:51234", "192.168.1.250:5001")
+    assert t.signature == "ET SCAN Nmap Scripting Engine" and t.category == "Attempted Information Leak"
+    assert t.blocked
+    bare = parse_threat({"id": "x", "timestamp": 1761480000, "subcategory": "SECURITY_INTRUSION_PREVENTION",
+                         "key": "THREAT_DETECTED", "message_raw": "Scan from {SRC_IP}",
+                         "parameters": {"SRC_IP": {"name": "1.2.3.4"}}})
+    assert bare.ts_ms == 1761480000000 and bare.signature == "Scan from 1.2.3.4" and not bare.blocked
+
+
+def test_threat_records_reads_system_log_and_skips_firewall_blocks():
+    client = unifi_client()
+    calls = []
+
+    def post(url, json=None, **kw):
+        calls.append((url, json))
+        return FakeResponse(200, body={"data": [SYSTEM_LOG_THREAT, FIREWALL_BLOCK], "total_element_count": 2})
+
+    client.session.post = post
+    records = client.threat_records(1000, 2000)
+    assert [r["id"] for r in records] == ["evt-9"]
+    url, body = calls[0]
+    assert url == "https://h/proxy/network/v2/api/site/default/system-log/all"
+    assert body["timestampFrom"] == 1000 and body["timestampTo"] == 2000
+    assert body["categories"] == ["SECURITY"] and body["subcategories"] == ["SECURITY_INTRUSION_PREVENTION"]
+
+
+def test_threat_records_error_names_every_endpoint():
+    client = unifi_client()
+    client.session.post = lambda url, **kw: FakeResponse(404, text="Not Found")
+    client.session.get = lambda url, **kw: FakeResponse(400, text='{"meta":{"rc":"error","msg":"api.err.Invalid"}}')
+    try:
+        client.threat_records(0, 10)
+    except UniFiError as exc:
+        message = str(exc)
+    else:
+        raise AssertionError("verwachtte een UniFiError")
+    assert "system-log: HTTP 404" in message and "stat/ips/event: HTTP 404" in message
+    assert "list/alarm: HTTP 400" in message and "api.err.Invalid" in message
+
+
+def test_system_log_rows_accepts_the_known_shapes():
+    assert system_log_rows({"data": [{"id": 1}]}) == [{"id": 1}]
+    assert system_log_rows([{"logs": [{"id": 2}]}]) == [{"id": 2}]
+    assert system_log_rows([{"id": 3}]) == [{"id": 3}]
+    assert system_log_rows({"total_element_count": 0}) == []
+    for bad in ({"meta": {"rc": "error"}}, "tekst", {"data": "x"}):
+        try:
+            system_log_rows(bad)
+        except UniFiError:
+            continue
+        raise AssertionError(f"{bad!r} had een fout moeten geven")
 
 
 def test_threat_records_falls_back_to_alarms():

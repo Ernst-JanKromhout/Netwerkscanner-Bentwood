@@ -13,6 +13,17 @@ from .review import NAME_SELECT, NOTHING_PENDING, SELECT_ENTITY, option_label
 
 TYPE_LABELS = dict(SECTIONS)
 
+# Alle sensoren die publish() zet; bij de overstap naar MQTT halen we deze REST-toestanden weg.
+SENSOR_IDS = (
+    "sensor.netwerkscanner_apparaten_online",
+    "sensor.netwerkscanner_gebeurtenissen_vandaag",
+    "sensor.netwerkscanner_apparaten",
+    "sensor.netwerkscanner_poorten",
+    "sensor.netwerkscanner_te_beoordelen",
+    "sensor.netwerkscanner_aanvallen_vandaag",
+    "sensor.netwerkscanner_laatste_wijzigingen",
+)
+
 
 def _port_label(p: dict) -> str:
     return f"{p['port']}/{p['proto']}" + (f" {p['service']}" if p.get("service") else "")
