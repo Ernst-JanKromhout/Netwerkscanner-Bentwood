@@ -30,6 +30,8 @@ class HomeAssistant:
         self.base_url = base_url
         self.session = requests.Session()
         self.session.headers["Authorization"] = f"Bearer {token or supervisor_token()}"
+        # Zodra dit een MqttSensors is, gaan sensoren via MQTT-discovery in plaats van de REST-API.
+        self.sensors = None
 
     def call_service(self, service: str, data: dict) -> bool:
         domain, _, name = service.partition(".")
@@ -97,6 +99,12 @@ class HomeAssistant:
             return None
 
     def set_sensor(self, entity_id: str, state, attributes: dict) -> None:
+        if self.sensors is not None:
+            try:
+                self.sensors.set_sensor(entity_id, state, attributes)
+            except Exception as exc:  # paho buffert bij een korte storing; dit is alleen voor het onverwachte
+                log.warning("Sensor %s via MQTT bijwerken mislukt: %s", entity_id, exc)
+            return
         try:
             resp = self.session.post(
                 f"{self.base_url}/states/{entity_id}",
@@ -106,3 +114,12 @@ class HomeAssistant:
             resp.raise_for_status()
         except requests.RequestException as exc:
             log.warning("Sensor %s bijwerken mislukt: %s", entity_id, exc)
+
+    def delete_state(self, entity_id: str) -> None:
+        """Haalt een via de REST-API gezette toestand weg; een ontbrekende toestand is geen fout."""
+        try:
+            resp = self.session.delete(f"{self.base_url}/states/{entity_id}", timeout=15)
+            if resp.status_code not in (200, 404):
+                resp.raise_for_status()
+        except requests.RequestException as exc:
+            log.warning("Oude sensor %s weghalen mislukt: %s", entity_id, exc)

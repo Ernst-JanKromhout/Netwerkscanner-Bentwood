@@ -11,14 +11,15 @@ from datetime import datetime, timedelta
 
 import requests
 
-from . import nmap, setup_ha
+from . import __version__, nmap, setup_ha
 from .config import DB_PATH, Config
 from .db import Database, iso, label, utcnow
 from .ports import RISK_LABELS, explain, risk
 from .engine import Engine, Sighting
 from .ha_events import NOTIFICATIONS, EventListener
 from .homeassistant import HomeAssistant
-from .overview import publish
+from .mqtt import MqttSensors, broker_settings
+from .overview import SENSOR_IDS, publish
 from .report import build_report, build_summary
 from .review import parse
 from .security import login_notifications, parse_login, parse_threat
@@ -183,8 +184,21 @@ class Scanner:
         log.info("Beoordeling %s voor %s: %d apparaat/apparaten", action, mac or "alle openstaande", count)
         publish(self._event_db, self.ha)
 
+    def use_mqtt(self) -> None:
+        """Sensoren via MQTT als er een broker is, anders zoals voorheen via de REST-API."""
+        settings = broker_settings()
+        sensors = MqttSensors.connect(settings, __version__) if settings else None
+        if sensors is None:
+            log.info("Sensoren via de REST-API: na een herstart van HA zijn ze er pas weer na de volgende ronde")
+            self.db.set_meta("sensor_transport", "rest")
+            return
+        migrate_to_mqtt(self.db, self.ha)
+        self.ha.sensors = sensors
+        self.update_sensors()  # meteen, zodat de entiteiten niet een minuut ontbreken
+
     def run(self) -> None:
         self.db.set_trusted(self.cfg.trusted_macs)
+        self.use_mqtt()
         self.worker.start()
         EventListener(self.on_ha_event).start()
         now = datetime.now()
@@ -239,6 +253,20 @@ class Scanner:
         return next_daily(now, self.cfg.report_time)
 
 
+def migrate_to_mqtt(db: Database, ha: HomeAssistant) -> None:
+    """Haalt de oude REST-sensoren weg voordat MQTT dezelfde entity_id's opeist.
+
+    Anders ziet HA de naam als bezet en maakt hij sensor.netwerkscanner_..._2 aan, en kloppen dashboards niet meer.
+    Alleen bij de overstap: daarna zijn het MQTT-entiteiten en raken we ze niet meer via REST aan.
+    """
+    if db.get_meta("sensor_transport") == "mqtt":
+        return
+    for entity_id in SENSOR_IDS:
+        ha.delete_state(entity_id)
+    db.set_meta("sensor_transport", "mqtt")
+    log.info("Oude REST-sensoren weggehaald, voortaan via MQTT")
+
+
 def use_home_assistant_time_zone() -> None:
     """De container draait in UTC; neem de tijdzone van HA over voor rapport- en scantijden."""
     tz = HomeAssistant().time_zone()
@@ -262,8 +290,8 @@ def main() -> None:
     cfg = Config.load()
     logging.basicConfig(level=cfg.log_level.upper(), format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     use_home_assistant_time_zone()
-    log.info("Netwerkscanner start, tijdzone %s, subnetten: %s",
-             os.environ.get("TZ", "UTC"), ", ".join(cfg.subnets) or "geen")
+    log.info("Netwerkscanner %s start, tijdzone %s, subnetten: %s",
+             __version__, os.environ.get("TZ", "UTC"), ", ".join(cfg.subnets) or "geen")
     if cfg.create_dashboard:
         set_up_dashboard(cfg)
     Scanner(cfg).run()

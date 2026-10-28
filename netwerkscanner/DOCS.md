@@ -26,6 +26,11 @@ ook als korte samenvatting op je telefoon.
 
 Sensoren:
 
+Draait de Mosquitto-app, dan maakt de scanner zijn sensoren via MQTT. Ze staan dan onder het apparaat
+**Netwerkscanner**, blijven bestaan na een herstart van Home Assistant en zijn te hernoemen of aan een ruimte te
+koppelen. Zonder Mosquitto zet de scanner ze via de REST-API; na een herstart van HA zijn ze er dan pas weer na
+de volgende ronde (binnen 5 minuten).
+
 | Sensor | Waarde | Extra |
 | --- | --- | --- |
 | `sensor.netwerkscanner_apparaten_online` | apparaten online | `bekend_totaal` |
@@ -82,6 +87,9 @@ Zie je een poort die je niet verwacht, zoals Telnet (23) of Extern bureaublad (3
 
 De scanner leest elke 5 minuten de meldingen van IDS/IPS op je UniFi-gateway uit. Zet die in UniFi aan
 (CyberSecure of Threat Management, het liefst op *Detect and block*), anders is er niets te lezen.
+Op UniFi Network 8.x en later komen ze uit het systeemlog van de nieuwe API, op oudere versies uit de oude
+endpoints. Staat er in het logboek *geen enkele manier om IPS-meldingen te lezen werkt*, dan staat erachter
+waarom per manier, bijvoorbeeld omdat het UniFi-account geen leesrechten op het systeemlog heeft.
 Daarnaast ziet de scanner het als iemand met een verkeerd wachtwoord probeert in te loggen op Home Assistant.
 Je krijgt een pushmelding, het blok **Beveiliging** op het dashboard toont de laatste vijf, en het dagrapport
 heeft ze bovenaan. 🛡️ betekent geblokkeerd, 🚨 dat de gateway het alleen zag of dat het een mislukte login was.

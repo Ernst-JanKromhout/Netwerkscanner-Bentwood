@@ -1,5 +1,10 @@
 # Wat is er nieuw
 
+## 0.1.11
+
+- Sensoren gaan via MQTT, als de Mosquitto-app draait. Ze staan nu onder één apparaat **Netwerkscanner**, overleven een herstart van Home Assistant en zijn te hernoemen of aan een ruimte te koppelen. De entity_id's blijven hetzelfde, dus je dashboard blijft werken. Zonder Mosquitto gaat het zoals voorheen.
+- IPS-meldingen werken weer op nieuwere UniFi Network-versies: de scanner leest ze uit het systeemlog van de nieuwe API. Lukt uitlezen niet, dan staat in het logboek per manier waarom.
+
 ## 0.1.10
 
 - Knop **Nu scannen** op het dashboard: kies een apparaat en start meteen een poortscan. De uitslag komt als melding in HA, met kleur en uitleg per poort.
