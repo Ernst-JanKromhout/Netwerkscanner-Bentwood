@@ -20,6 +20,7 @@ De eerste keer legt de scanner alle aanwezige apparaten vast als beginsituatie, 
 | Nieuw apparaat | Ja (niet voor `trusted_macs`) | Ja |
 | Nieuwe open poort op niet-vertrouwd apparaat | Ja | Ja |
 | Afgekeurd apparaat weer online | Ja | Ja |
+| Onbekend netwerk (één keer per netwerk) | Ja | Ja |
 | Storing van de scanner zelf (langer dan 30 minuten) en herstel | Ja | Ja |
 | Al het andere | Nee | Ja |
 
@@ -36,6 +37,7 @@ de volgende ronde (binnen 5 minuten).
 | Sensor | Waarde | Extra |
 | --- | --- | --- |
 | `sensor.netwerkscanner_status` | `werkt` of `storing` | `bronnen`: per bron of hij werkt, wanneer laatst gelukt en de fout |
+| `sensor.netwerkscanner_onbekende_netwerken` | onbekende netwerken (laatste 30 dagen) | `netwerken`: netwerk, waar gezien, sinds |
 | `sensor.netwerkscanner_apparaten_online` | apparaten online | `bekend_totaal` |
 | `sensor.netwerkscanner_apparaten` | bekende apparaten | |
 | `sensor.netwerkscanner_apparaten_1` t/m `_3` | apparaten in dit deel | `apparaten`: naam, IP, status, online, open poorten |
@@ -44,6 +46,17 @@ de volgende ronde (binnen 5 minuten).
 | `sensor.netwerkscanner_aanvallen_vandaag` | aanvallen en mislukte logins vandaag | `meldingen` |
 | `sensor.netwerkscanner_gebeurtenissen_vandaag` | wijzigingen vandaag | |
 | `sensor.netwerkscanner_laatste_wijzigingen` | tijd van de laatste wijziging | `wijzigingen`: de laatste 10, nieuwste eerst |
+
+## Onbekende netwerken
+
+De scanner kent je eigen netwerken: wat UniFi heeft (LAN, VLAN's zoals IoT, VPN's), de internetkant van je
+gateway (zoals het netwerk van een modem ervoor) en wat je in `subnets` en `known_subnets` zet. Elke 5 minuten
+kijkt hij of er een privé-IP opduikt dat daar niet in past: bij een apparaat van de afgelopen week, in een
+IPS-melding of bij een mislukte login. Zo'n netwerk krijg je één keer als pushmelding, het staat in het dagrapport
+en op het dashboard onder **Onbekende netwerken**.
+
+Meestal is het een extra router of extender, een apparaat met een eigen hotspot, een VPN of een apparaat met een
+verkeerd ingesteld vast IP. Hoort het erbij, zet het netwerk dan in `known_subnets`, bijvoorbeeld `192.168.4.0/24`.
 
 ## Als de scanner zelf een storing heeft
 

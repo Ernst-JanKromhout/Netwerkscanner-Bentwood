@@ -64,6 +64,16 @@ CREATE TABLE IF NOT EXISTS events (
 );
 CREATE INDEX IF NOT EXISTS idx_events_ts ON events (ts);
 
+-- Privé-netwerken die buiten je eigen netwerken vielen; één melding per netwerk.
+CREATE TABLE IF NOT EXISTS networks (
+    cidr         TEXT PRIMARY KEY,
+    first_seen   TEXT NOT NULL,
+    last_seen    TEXT NOT NULL,
+    example      TEXT,           -- waar we het zagen, leesbaar
+    example_mac  TEXT,
+    known_as     TEXT            -- NULL = onbekend; anders de naam van het netwerk waar het nu onder valt
+);
+
 -- Pushmeldingen die niet aankwamen (HA even weg); worden later opnieuw geprobeerd.
 CREATE TABLE IF NOT EXISTS outbox (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -274,6 +284,38 @@ class Database:
     def events_between(self, start: str, end: str) -> list[sqlite3.Row]:
         return self.conn.execute(
             "SELECT * FROM events WHERE ts >= ? AND ts < ? ORDER BY ts", (start, end)
+        ).fetchall()
+
+    # netwerken
+
+    def network(self, cidr: str) -> sqlite3.Row | None:
+        return self.conn.execute("SELECT * FROM networks WHERE cidr = ?", (cidr,)).fetchone()
+
+    def networks(self) -> list[sqlite3.Row]:
+        return self.conn.execute("SELECT * FROM networks ORDER BY known_as IS NOT NULL, last_seen DESC").fetchall()
+
+    def add_network(self, cidr: str, ts: str, example: str, example_mac: str | None) -> None:
+        self.conn.execute(
+            "INSERT INTO networks (cidr, first_seen, last_seen, example, example_mac) VALUES (?, ?, ?, ?, ?)",
+            (cidr, ts, ts, example, example_mac),
+        )
+
+    def seen_network(self, cidr: str, ts: str, example: str, example_mac: str | None) -> None:
+        self.conn.execute("UPDATE networks SET last_seen = ?, example = ?, example_mac = ? WHERE cidr = ?",
+                          (ts, example, example_mac, cidr))
+
+    def set_network_known(self, cidr: str, known_as: str | None) -> None:
+        self.conn.execute("UPDATE networks SET known_as = ? WHERE cidr = ?", (known_as, cidr))
+
+    def recent_devices(self, since: str) -> list[sqlite3.Row]:
+        return self.conn.execute(
+            "SELECT * FROM devices WHERE ip IS NOT NULL AND last_seen >= ? ORDER BY last_seen DESC", (since,)
+        ).fetchall()
+
+    def events_of_types(self, types: tuple[str, ...], since: str) -> list[sqlite3.Row]:
+        marks = ",".join("?" * len(types))
+        return self.conn.execute(
+            f"SELECT * FROM events WHERE type IN ({marks}) AND ts >= ? ORDER BY id DESC", (*types, since)
         ).fetchall()
 
     # meldingen die nog weg moeten

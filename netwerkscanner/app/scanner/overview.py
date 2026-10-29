@@ -27,6 +27,7 @@ SENSOR_IDS = (
     "sensor.netwerkscanner_aanvallen_vandaag",
     "sensor.netwerkscanner_laatste_wijzigingen",
     "sensor.netwerkscanner_status",
+    "sensor.netwerkscanner_onbekende_netwerken",
 )
 
 
@@ -210,6 +211,13 @@ def publish(db: Database, ha: HomeAssistant, health: Health | None = None) -> No
     ha.set_sensor("sensor.netwerkscanner_aanvallen_vandaag", len(security_today),
                   {"friendly_name": "Netwerk: aanvallen en mislukte logins vandaag", "unit_of_measurement": "meldingen",
                    "icon": "mdi:shield-alert", "meldingen": fit(security_events(db))})
+    nets = [{"netwerk": n["cidr"], "onbekend": n["known_as"] is None, "nu_bekend_als": n["known_as"] or "",
+             "gezien_bij": n["example"] or "", "eerst_gezien": _local(n["first_seen"]),
+             "laatst_gezien": _local(n["last_seen"])}
+            for n in db.networks() if n["last_seen"] >= iso(utcnow() - timedelta(days=30))]
+    ha.set_sensor("sensor.netwerkscanner_onbekende_netwerken", sum(n["onbekend"] for n in nets),
+                  {"friendly_name": "Netwerk: onbekende netwerken", "unit_of_measurement": "netwerken",
+                   "icon": "mdi:lan-disconnect", "netwerken": fit(nets)})
     changes = fit(recent_changes(db, 10))
     ha.set_sensor("sensor.netwerkscanner_laatste_wijzigingen", changes[0]["tijd"] if changes else "geen",
                   {"friendly_name": "Netwerk: laatste wijzigingen", "icon": "mdi:history",
