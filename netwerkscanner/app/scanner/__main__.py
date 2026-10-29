@@ -21,6 +21,7 @@ from .ha_events import NOTIFICATIONS, EventListener
 from .health import Health
 from .homeassistant import HomeAssistant
 from .mqtt import MqttSensors, broker_settings
+from .networks import configured_networks
 from .overview import SENSOR_IDS, publish
 from .report import build_report, build_summary
 from .review import parse
@@ -137,6 +138,8 @@ class Scanner:
         self.engine = Engine(self.db, cfg, self.ha, self.worker.request)
         self.unifi = UniFiClient(cfg) if cfg.unifi_enabled else None
         self._event_db: Database | None = None
+        self._unifi_networks: list = []
+        self._unifi_networks_at: float | None = None
 
     def poll_unifi(self) -> None:
         try:
@@ -184,6 +187,23 @@ class Scanner:
             self.ha.notify(self.cfg.notify_services, title, build_summary(self.db, start, end))
         self.db.set_meta("last_report_at", end)
         log.info("Dagrapport verstuurd met %d gebeurtenissen", count)
+
+    def check_networks(self) -> None:
+        """Eigen netwerken: subnets en known_subnets, plus wat UniFi kent (elk uur opnieuw opgehaald)."""
+        if self.unifi is not None and (self._unifi_networks_at is None
+                                       or time.monotonic() - self._unifi_networks_at > 3600):
+            try:
+                self._unifi_networks = self.unifi.networks()
+                self._unifi_networks_at = time.monotonic()
+            except (UniFiError, requests.RequestException) as exc:
+                log.warning("Netwerken uit UniFi lezen mislukt, vorige lijst blijft gelden: %s", exc)
+                if self._unifi_networks_at is None:
+                    return  # zonder de UniFi-netwerken zou alles als onbekend tellen
+        known = configured_networks(self.cfg.subnets, self.cfg.known_subnets) + self._unifi_networks
+        new = self.engine.check_networks(known)
+        if new:
+            log.warning("%d onbekend(e) netwerk(en) gezien", new)
+            self.update_sensors()
 
     def update_sensors(self) -> None:
         publish(self.db, self.ha, self.health)
@@ -271,6 +291,7 @@ class Scanner:
             "sensors": now + timedelta(minutes=1),
             "threats": now + timedelta(seconds=45),
             "health": now + timedelta(minutes=1),
+            "networks": now + timedelta(minutes=2),
             "nightly": next_daily(now, self.cfg.nightly_scan_time),
             "report": next_daily(now, self.cfg.report_time),
         }
@@ -301,6 +322,8 @@ class Scanner:
             self.update_sensors()
         elif task == "health":
             self.check_health()
+        elif task == "networks":
+            self.check_networks()
         elif task == "nightly":
             self.nightly(when)
         elif task == "report":
@@ -313,7 +336,7 @@ class Scanner:
             return now + timedelta(minutes=self.cfg.ping_interval_minutes)
         if task == "health":
             return now + timedelta(minutes=1)
-        if task in ("absent", "sensors", "threats"):
+        if task in ("absent", "sensors", "threats", "networks"):
             return now + timedelta(minutes=5)
         if task == "nightly":
             return next_daily(now, self.cfg.nightly_scan_time)

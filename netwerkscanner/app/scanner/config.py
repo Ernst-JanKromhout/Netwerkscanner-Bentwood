@@ -25,6 +25,7 @@ class Config:
     unifi_verify_ssl: bool = False
     unifi_fingerprint: str = ""
     subnets: list[str] = field(default_factory=list)
+    known_subnets: list[str] = field(default_factory=list)
     notify_services: list[str] = field(default_factory=list)
     dashboard_path: str = "/dashboard-netwerk/overzicht"
     create_dashboard: bool = True

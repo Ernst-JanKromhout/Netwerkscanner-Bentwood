@@ -1,5 +1,10 @@
 # Wat is er nieuw
 
+## 0.2.1
+
+- **Onbekende netwerken**: duikt er een privé-IP op buiten je eigen netwerken (UniFi, de internetkant van je gateway en `subnets`), dan krijg je één melding per netwerk, met waar het gezien is. Denk aan een extra router, een apparaat met een eigen hotspot of een VPN. Op het dashboard staat een blok **Onbekende netwerken** zolang er een is.
+- Nieuwe optie `known_subnets`: netwerken die je kent en die toch niet in UniFi staan, bijvoorbeeld `192.168.4.0/24`.
+
 ## 0.2.0
 
 Betrouwbaarheid: de scanner merkt nu zelf als er iets misgaat.

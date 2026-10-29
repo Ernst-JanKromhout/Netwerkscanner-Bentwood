@@ -11,6 +11,7 @@ SECTIONS = [
     ("scanner_ok", "Scanner werkt weer"),
     ("intrusion", "Aanvallen (IPS van de gateway)"),
     ("login_failed", "Mislukte inlogpogingen op Home Assistant"),
+    ("unknown_network", "Onbekende netwerken"),
     ("new_device", "Nieuwe apparaten"),
     ("rejected", "Afgekeurd"),
     ("approved", "Goedgekeurd"),
@@ -67,6 +68,8 @@ def _line(db: Database, type_: str, mac: str | None, d: dict) -> str:
         return f"{d.get('signature')} van {d.get('src')} naar {d.get('dst')} ({blocked})"
     if type_ == "login_failed":
         return f"van {d.get('host')} ({d.get('ip')})"
+    if type_ == "unknown_network":
+        return f"{d.get('network')}, gezien bij {d.get('voorbeeld')}"
     if type_ == "scanner_fault":
         return f"{d.get('bron')}: {d.get('fout') or 'onbekende fout'}"
     if type_ == "scanner_ok":

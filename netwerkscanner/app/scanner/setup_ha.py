@@ -158,6 +158,15 @@ HEALTH_ALERT = (
     "🚨 **{{ b.bron }}** werkt niet sinds {{ b.storing_sinds }}: {{ b.fout }}\n\n{% endif %}{% endfor %}"
 )
 
+UNKNOWN_NETWORKS = (
+    "{% for n in state_attr('sensor.netwerkscanner_onbekende_netwerken', 'netwerken') or [] %}"
+    "{% if n.onbekend %}🛰️ **{{ n.netwerk }}** gezien bij {{ n.gezien_bij }} (sinds {{ n.eerst_gezien }})\n\n"
+    "{% endif %}{% endfor %}"
+    "*Hoort een netwerk erbij, zet het dan in de optie `known_subnets` van de add-on.*"
+)
+
+UNKNOWN = {"condition": "numeric_state", "entity": "sensor.netwerkscanner_onbekende_netwerken", "above": 0}
+
 PENDING = {"condition": "numeric_state", "entity": "sensor.netwerkscanner_te_beoordelen", "above": 0}
 
 
@@ -192,6 +201,10 @@ OVERVIEW_SECTIONS = [
         _button("Afkeuren", "mdi:close-circle", "netwerkscanner_afkeuren"),
         _button("Alle openstaande goedkeuren", "mdi:check-all", "netwerkscanner_alles_goedkeuren", 12,
                 "Alle openstaande apparaten goedkeuren?"),
+    ]},
+    {"type": "grid", "visibility": [UNKNOWN], "cards": [
+        {"type": "heading", "heading": "Onbekende netwerken", "icon": "mdi:lan-disconnect"},
+        {"type": "markdown", "content": UNKNOWN_NETWORKS, "grid_options": {"columns": "full"}},
     ]},
     {"type": "grid", "cards": [
         {"type": "heading", "heading": "Beveiliging", "heading_style": "subtitle", "icon": "mdi:shield-alert"},

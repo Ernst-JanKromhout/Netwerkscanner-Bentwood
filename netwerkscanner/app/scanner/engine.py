@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import ipaddress
+import json
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -11,6 +13,7 @@ from .config import Config
 from .db import Database, iso, label, utcnow
 from .diff import Change, diff_identity, diff_ports, is_random_mac
 from .health import SOURCES, Transition
+from .networks import KnownNetwork, find_known, strip_port, unknown_network
 from .homeassistant import HomeAssistant
 from .nmap import Host
 from .ports import RISK_LABELS, explain, risk
@@ -183,6 +186,59 @@ class Engine:
             self.db.update_outbox(row["id"], push_done, note_done)
             sent += push_done and note_done
         return sent
+
+    # netwerken
+
+    def check_networks(self, known: list[KnownNetwork], now: datetime | None = None) -> int:
+        """Zoekt IP's buiten je eigen netwerken en meldt elk onbekend netwerk één keer. Geeft het aantal nieuwe.
+
+        Bronnen: apparaten van de laatste week en adressen uit IPS-meldingen en mislukte logins.
+        Zonder bekende netwerken (geen UniFi en geen subnets) valt er niets te vergelijken.
+        """
+        if not known:
+            return 0
+        now = now or utcnow()
+        ts = iso(now)
+        since = iso(now - timedelta(days=7))
+        found: dict[str, tuple[str, str | None]] = {}  # cidr -> (waar gezien, mac)
+        for device in self.db.recent_devices(since):
+            net = unknown_network(device["ip"], known)
+            if net is not None:
+                found.setdefault(str(net), (describe(device), device["mac"]))
+        for e in self.db.events_of_types(("intrusion", "login_failed"), since):
+            d = json.loads(e["detail"])
+            what = "een IPS-melding" if e["type"] == "intrusion" else "een mislukte login op HA"
+            for address in (d.get("src"), d.get("dst"), d.get("ip")):
+                if not address:
+                    continue
+                ip = strip_port(address)
+                net = unknown_network(ip, known)
+                if net is not None:
+                    found.setdefault(str(net), (f"{ip} in {what}", None))
+
+        new = 0
+        for cidr, (example, mac) in found.items():
+            row = self.db.network(cidr)
+            if row is None:
+                self.db.add_network(cidr, ts, example, mac)
+                event_id = self.db.add_event(ts, "unknown_network", mac, {"network": cidr, "voorbeeld": example})
+                self._push(event_id, f"Onbekend netwerk {cidr}",
+                           f"Gezien bij: {example}\n"
+                           "Dit netwerk hoort niet bij je eigen netwerken. Vaak is het een extra router of extender, "
+                           "een apparaat met een eigen hotspot, een VPN of een verkeerd ingesteld vast IP.\n"
+                           "Hoort het erbij, zet het dan in de optie known_subnets.", review_hint=False)
+                new += 1
+            else:
+                self.db.seen_network(cidr, ts, example, mac)
+                if row["known_as"] is not None:
+                    self.db.set_network_known(cidr, None)
+        # Netwerken die je intussen goedkeurde of die UniFi nu kent, tellen niet meer als onbekend.
+        for row in self.db.networks():
+            if row["known_as"] is None and row["cidr"] not in found:
+                match = find_known(str(ipaddress.ip_network(row["cidr"]).network_address + 1), known)
+                if match is not None:
+                    self.db.set_network_known(row["cidr"], match.name)
+        return new
 
     # gezondheid van de scanner zelf
 

@@ -16,6 +16,7 @@ import urllib3
 from requests.adapters import HTTPAdapter
 
 from .config import Config, normalize_mac
+from .networks import KnownNetwork, unifi_networks, wan_networks
 from .security import IPS_SUBCATEGORY, is_ips_alarm
 
 log = logging.getLogger(__name__)
@@ -113,6 +114,7 @@ class UniFiClient:
         self.api_prefix = ""
         self.login_failures = 0
         self.next_login = 0.0
+        self.last_devices: list[dict] = []  # ruwe stat/device van de laatste ronde, voor de internetkant
 
     def _pin(self, base: str, host: str, port: int) -> None:
         if self.cfg.unifi_verify_ssl:
@@ -212,8 +214,13 @@ class UniFiClient:
     def active_clients(self) -> list[Client]:
         """Clients plus de UniFi-apparaten zelf (switches, access points), die niet in stat/sta staan."""
         clients = [parse_client(raw) for raw in self._get("stat/sta") if raw.get("mac")]
-        devices = [parse_device(raw) for raw in self._get("stat/device") if raw.get("mac") and raw.get("state") == 1]
+        self.last_devices = self._get("stat/device")
+        devices = [parse_device(raw) for raw in self.last_devices if raw.get("mac") and raw.get("state") == 1]
         return clients + devices
+
+    def networks(self) -> list[KnownNetwork]:
+        """Je netwerken volgens UniFi, plus de internetkant van de gateway."""
+        return unifi_networks(self._get("rest/networkconf")) + wan_networks(self.last_devices)
 
 
     def threat_records(self, since_ms: int, now_ms: int) -> list[dict]:
