@@ -10,6 +10,7 @@ from typing import Callable
 from .config import Config
 from .db import Database, iso, label, utcnow
 from .diff import Change, diff_identity, diff_ports, is_random_mac
+from .health import SOURCES, Transition
 from .homeassistant import HomeAssistant
 from .nmap import Host
 from .ports import RISK_LABELS, explain, risk
@@ -94,11 +95,15 @@ class Engine:
         for change in changes:
             self.db.add_event(ts, change.type, s.mac, change.detail)
         if came_back:
-            self.db.add_event(ts, "device_back", s.mac, {"ip": s.ip, "away_since": existing["last_seen"]})
+            event_id = self.db.add_event(ts, "device_back", s.mac, {"ip": s.ip, "away_since": existing["last_seen"]})
             self.db.set_present(s.mac, True)
         if changes or came_back:
             self.db.add_observation(ts, s.mac, s.ip, s.hostname, source)
         self.db.upsert_device(s.mac, ts, **fields)
+        if came_back and existing["review"] == "rejected":
+            self._push(event_id, "Afgekeurd apparaat weer online",
+                       f"{describe(self.db.device(s.mac))}\nJe had dit apparaat afgekeurd. Blokkeer het in UniFi "
+                       "als het niet op je netwerk hoort.", review_hint=False)
         return False
 
     def mark_seen_by_ip(self, ip: str, source: str, now: datetime | None = None) -> bool:
@@ -144,13 +149,56 @@ class Engine:
                 self._push(event_id, "Nieuwe open poort",
                            f"{describe(device)}\nPoort {d['port']}/{d['proto']}: {service}\n{RISK_LABELS[risk(d['port'])]} {explain(d['port'], d['service'])}")
 
-    def _push(self, event_id: int, title: str, message: str) -> None:
+    def _push(self, event_id: int, title: str, message: str, review_hint: bool = True) -> None:
+        """Melding in HA en op de telefoon. Lukt een van beide niet (HA even weg), dan later opnieuw."""
         url = self.cfg.dashboard_path
-        self.ha.persistent_notification(f"netwerkscanner_{event_id}", title,
-                                        f"{message}\n\n[Open het dashboard Netwerk]({url})")
-        message += "\nBeoordeel het in het dashboard Netwerk."
-        if self.ha.notify(self.cfg.notify_services, title, message, url):
+        note_id = f"netwerkscanner_{event_id}"
+        note_text = f"{message}\n\n[Open het dashboard Netwerk]({url})"
+        noted = self.ha.persistent_notification(note_id, title, note_text)
+        if review_hint:
+            message += "\nBeoordeel het in het dashboard Netwerk."
+        delivered = self.ha.notify(self.cfg.notify_services, title, message, url)
+        if delivered:
             self.db.mark_notified(event_id)
+        pushed = delivered or not self.cfg.notify_services  # zonder diensten valt er niets te herhalen
+        if not (pushed and noted):
+            self.db.queue_push(iso(utcnow()), event_id, title, None if pushed else message, url,
+                               None if noted else note_id, note_text)
+            log.info("Melding '%s' kwam niet aan, wordt later opnieuw geprobeerd", title)
+
+    def retry_pushes(self, now: datetime | None = None) -> int:
+        """Probeert meldingen die niet aankwamen opnieuw; na een dag vervallen ze (het dagrapport heeft ze)."""
+        now = now or utcnow()
+        dropped = self.db.drop_outbox_before(iso(now - timedelta(days=1)))
+        if dropped:
+            log.warning("%d melding(en) na een dag nog steeds niet aangekomen, vervallen", dropped)
+        sent = 0
+        for row in self.db.outbox():
+            push_done = not row["message"] or self.ha.notify(self.cfg.notify_services, row["title"],
+                                                              row["message"], row["url"])
+            note_done = not row["note_id"] or self.ha.persistent_notification(row["note_id"], row["title"],
+                                                                               row["note_text"])
+            if push_done and row["message"] and row["event_id"]:
+                self.db.mark_notified(row["event_id"])
+            self.db.update_outbox(row["id"], push_done, note_done)
+            sent += push_done and note_done
+        return sent
+
+    # gezondheid van de scanner zelf
+
+    def handle_health(self, transitions: list[Transition], now: datetime | None = None) -> None:
+        ts = iso(now or utcnow())
+        for t in transitions:
+            name = SOURCES.get(t.source, t.source)
+            if t.ok:
+                event_id = self.db.add_event(ts, "scanner_ok", None, {"bron": name})
+                self._push(event_id, f"Netwerkscanner: {name} werkt weer", "De scanner volgt je netwerk weer.",
+                           review_hint=False)
+            else:
+                event_id = self.db.add_event(ts, "scanner_fault", None, {"bron": name, "fout": t.error})
+                self._push(event_id, f"Netwerkscanner: storing bij {name}",
+                           f"Werkt al sinds {t.since.astimezone():%H:%M} niet.\n{t.error or ''}".strip(),
+                           review_hint=False)
 
     # beveiliging
 

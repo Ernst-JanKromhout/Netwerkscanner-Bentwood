@@ -23,6 +23,7 @@ class Config:
     unifi_password: str = ""
     unifi_site: str = "default"
     unifi_verify_ssl: bool = False
+    unifi_fingerprint: str = ""
     subnets: list[str] = field(default_factory=list)
     notify_services: list[str] = field(default_factory=list)
     dashboard_path: str = "/dashboard-netwerk/overzicht"
@@ -36,6 +37,7 @@ class Config:
     report_to_notify: bool = True
     absent_hours: int = 24
     top_ports: int = 1000
+    scan_workers: int = 2
     log_level: str = "info"
 
     @property

@@ -153,6 +153,11 @@ SECURITY_LIST = (
     "{% else %}🛡️ *Geen aanvallen of mislukte logins gezien.*{% endfor %}"
 )
 
+HEALTH_ALERT = (
+    "{% for b in state_attr('sensor.netwerkscanner_status', 'bronnen') or [] %}{% if not b.werkt %}"
+    "🚨 **{{ b.bron }}** werkt niet sinds {{ b.storing_sinds }}: {{ b.fout }}\n\n{% endif %}{% endfor %}"
+)
+
 PENDING = {"condition": "numeric_state", "entity": "sensor.netwerkscanner_te_beoordelen", "above": 0}
 
 
@@ -169,6 +174,9 @@ OVERVIEW_SECTIONS = [
         {"type": "heading", "heading": "Nu", "icon": "mdi:lan"},
         {"type": "tile", "entity": "sensor.netwerkscanner_apparaten_online", "name": "Online", "color": "green",
          "features": [{"type": "trend-graph", "hours_to_show": 24}], "grid_options": {"columns": 12}},
+        {"type": "markdown", "visibility": [{"condition": "state", "entity": "sensor.netwerkscanner_status",
+                                             "state": "storing"}],
+         "content": HEALTH_ALERT, "grid_options": {"columns": "full"}},
         {"type": "tile", "entity": "sensor.netwerkscanner_te_beoordelen", "name": "Te beoordelen",
          "color": "orange", "vertical": True, "grid_options": {"columns": 4, "rows": 2}},
         {"type": "tile", "entity": "sensor.netwerkscanner_aanvallen_vandaag", "name": "Aanvallen vandaag",
