@@ -18,11 +18,46 @@ SENSOR_IDS = (
     "sensor.netwerkscanner_apparaten_online",
     "sensor.netwerkscanner_gebeurtenissen_vandaag",
     "sensor.netwerkscanner_apparaten",
+    "sensor.netwerkscanner_apparaten_1",
+    "sensor.netwerkscanner_apparaten_2",
+    "sensor.netwerkscanner_apparaten_3",
     "sensor.netwerkscanner_poorten",
     "sensor.netwerkscanner_te_beoordelen",
     "sensor.netwerkscanner_aanvallen_vandaag",
     "sensor.netwerkscanner_laatste_wijzigingen",
 )
+
+
+# HA bewaart attributen boven 16 KB niet in de database en waarschuwt daar steeds over in het logboek.
+# Daarom gaat de apparatenlijst in delen over meerdere sensoren en blijft elke lijst ruim onder die grens.
+MAX_ATTR_BYTES = 14000
+DEVICE_PARTS = 3
+
+
+def fit(items: list, limit: int = MAX_ATTR_BYTES) -> list:
+    """Kort een lijst van achteren in tot hij als JSON onder `limit` bytes blijft."""
+    items = list(items)
+    while items and len(json.dumps(items, ensure_ascii=False).encode()) > limit:
+        items.pop()
+    return items
+
+
+def split(items: list, parts: int) -> list[list]:
+    """Verdeelt in `parts` stukken die zo even groot mogelijk zijn, de eerste het grootst."""
+    n = -(-len(items) // parts) if items else 0
+    return [items[i * n:(i + 1) * n] for i in range(parts)]
+
+
+def dashboard_rows(device_rows: list[dict]) -> list[dict]:
+    """Alleen wat de tabel op het dashboard toont, met poorten als nummers."""
+    return [{
+        "naam": d["naam"],
+        "ip": d["ip"],
+        "status": d["status"],
+        "online": d["online"],
+        "gescand": d["gescand"],
+        "poorten": sorted({int(p.split("/")[0]) for p in d["poorten"]}),
+    } for d in device_rows]
 
 
 def _port_label(p: dict) -> str:
@@ -70,6 +105,16 @@ def port_overview(device_rows: list[dict], db: Database) -> list[dict]:
                 row["apparaten"].append(names[mac])
     order = {"hoog": 0, "let op": 1, "normaal": 2}
     return sorted(found.values(), key=lambda r: (order[r["risico"]], int(r["poort"].split("/")[0])))
+
+
+def dashboard_ports(open_ports: list[dict]) -> list[dict]:
+    """Zonder de volledige lijst apparaten per poort: één naam, of hoeveel apparaten het zijn."""
+    return [{
+        "poort": p["poort"],
+        "uitleg": p["uitleg"],
+        "risico": p["risico"],
+        "op": p["apparaten"][0] if len(p["apparaten"]) == 1 else f"{len(p['apparaten'])} apparaten",
+    } for p in open_ports]
 
 
 def _status(device) -> str:
@@ -142,19 +187,23 @@ def publish(db: Database, ha: HomeAssistant) -> None:
     device_rows = devices(db)
     ha.set_sensor("sensor.netwerkscanner_apparaten", known,
                   {"friendly_name": "Netwerk: apparaten", "unit_of_measurement": "apparaten",
-                   "icon": "mdi:devices", "apparaten": device_rows})
+                   "icon": "mdi:devices"})
+    for i, part in enumerate(split(dashboard_rows(device_rows), DEVICE_PARTS), start=1):
+        ha.set_sensor(f"sensor.netwerkscanner_apparaten_{i}", len(part),
+                      {"friendly_name": f"Netwerk: apparaten deel {i}", "unit_of_measurement": "apparaten",
+                       "icon": "mdi:devices", "apparaten": fit(part)})
     open_ports = port_overview(device_rows, db)
     ha.set_sensor("sensor.netwerkscanner_poorten", len(open_ports),
                   {"friendly_name": "Netwerk: soorten open poorten", "unit_of_measurement": "poorten",
-                   "icon": "mdi:door-open", "poorten": open_ports})
+                   "icon": "mdi:door-open", "poorten": fit(dashboard_ports(open_ports))})
     ha.set_sensor("sensor.netwerkscanner_te_beoordelen", len(pending),
                   {"friendly_name": "Netwerk: te beoordelen", "unit_of_measurement": "apparaten",
                    "icon": "mdi:shield-search"})
     security_today = [e for e in today if e["type"] in SECURITY_TYPES]
     ha.set_sensor("sensor.netwerkscanner_aanvallen_vandaag", len(security_today),
                   {"friendly_name": "Netwerk: aanvallen en mislukte logins vandaag", "unit_of_measurement": "meldingen",
-                   "icon": "mdi:shield-alert", "meldingen": security_events(db)})
-    changes = recent_changes(db)
+                   "icon": "mdi:shield-alert", "meldingen": fit(security_events(db))})
+    changes = fit(recent_changes(db, 10))
     ha.set_sensor("sensor.netwerkscanner_laatste_wijzigingen", changes[0]["tijd"] if changes else "geen",
                   {"friendly_name": "Netwerk: laatste wijzigingen", "icon": "mdi:history",
                    "wijzigingen": changes})

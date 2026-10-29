@@ -79,3 +79,38 @@ def test_risk_levels():
     assert risk(23) == "hoog" and risk(445) == "hoog"
     assert risk(22) == "let op" and risk(12345) == "let op"
     assert risk(443) == "normaal"
+
+
+def test_publish_keeps_every_sensor_under_16kb(tmp_path):
+    import json as _json
+
+    from scanner.overview import publish
+
+    class RecordingHA(FakeHA):
+        def __init__(self):
+            self.sensors = {}
+
+        def set_sensor(self, entity_id, state, attributes):
+            self.sensors[entity_id] = (state, attributes)
+
+        def set_select_options(self, entity_id, options):
+            pass
+
+    db = Database(tmp_path / "t.db")
+    engine = Engine(db, Config(), FakeHA())
+    sightings = [Sighting(f"00:11:32:00:{i // 256:02x}:{i % 256:02x}", f"192.168.1.{i % 250}",
+                          f"apparaat-met-een-lange-naam-{i}", vendor="Een fabrikant met een lange naam")
+                 for i in range(250)]
+    engine.handle_sightings(sightings, "unifi", T0)
+    for s in sightings:
+        ports = {(p, "tcp"): {"service": "http"} for p in range(8000, 8020)}
+        engine.handle_scan(s.mac, s.ip, "top", Host(s.ip, True, ports=ports), 5, T0)
+
+    ha = RecordingHA()
+    publish(db, ha)
+    for entity_id, (_, attributes) in ha.sensors.items():
+        assert len(_json.dumps(attributes, ensure_ascii=False).encode()) < 16384, entity_id
+    parts = [ha.sensors[f"sensor.netwerkscanner_apparaten_{i}"] for i in (1, 2, 3)]
+    assert sum(state for state, _ in parts) == 250
+    assert parts[0][1]["apparaten"][0]["poorten"][:2] == [8000, 8001]
+    assert "apparaten" not in ha.sensors["sensor.netwerkscanner_apparaten"][1]
