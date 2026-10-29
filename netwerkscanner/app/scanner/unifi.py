@@ -2,11 +2,18 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
+import ssl
+import time
 from dataclasses import dataclass
+from pathlib import Path
+from typing import Callable
 
 import requests
 import urllib3
+from requests.adapters import HTTPAdapter
 
 from .config import Config, normalize_mac
 from .security import IPS_SUBCATEGORY, is_ips_alarm
@@ -16,6 +23,10 @@ log = logging.getLogger(__name__)
 # Nieuwere UniFi Network-versies (8.x en later) zetten IPS-meldingen in het systeemlog van de v2-API.
 SYSTEM_LOG_PAGE_SIZE = 100
 SYSTEM_LOG_MAX_PAGES = 5
+
+# Na een mislukte login steeds langer wachten, zodat UniFi OS het account niet blokkeert.
+LOGIN_BACKOFF_SECONDS = (60, 120, 300, 900)
+PINS_PATH = Path("/data/unifi_fingerprints.json")
 
 
 class UniFiError(Exception):
@@ -32,40 +43,126 @@ class Client:
     network: str | None
 
 
-class UniFiClient:
-    """Werkt met UniFi OS (/api/auth/login) en met de oudere controller op poort 8443."""
+def normalize_fingerprint(value: str) -> str:
+    return value.replace(":", "").replace(" ", "").strip().lower()
 
-    def __init__(self, cfg: Config):
+
+def server_fingerprint(host: str, port: int) -> str:
+    """SHA-256 van het certificaat dat de controller nu laat zien (zonder het te controleren)."""
+    pem = ssl.get_server_certificate((host, port), timeout=10)
+    return hashlib.sha256(ssl.PEM_cert_to_DER_cert(pem)).hexdigest()
+
+
+class PinnedAdapter(HTTPAdapter):
+    """Accepteert alleen het certificaat met deze vingerafdruk, ook als het zelfondertekend is."""
+
+    def __init__(self, fingerprint: str, **kwargs):
+        self.fingerprint = normalize_fingerprint(fingerprint)
+        super().__init__(**kwargs)
+
+    def init_poolmanager(self, *args, **kwargs):
+        kwargs["assert_fingerprint"] = self.fingerprint
+        super().init_poolmanager(*args, **kwargs)
+
+
+class Pins:
+    """Vingerafdrukken per host:poort. Bij de eerste verbinding vastgelegd, daarna gecontroleerd."""
+
+    def __init__(self, path: Path = PINS_PATH, fetch: Callable[[str, int], str] = server_fingerprint):
+        self.path = path
+        self.fetch = fetch
+
+    def _load(self) -> dict:
+        try:
+            return json.loads(self.path.read_text())
+        except (OSError, ValueError):
+            return {}
+
+    def get(self, host: str, port: int) -> str:
+        """De vastgelegde vingerafdruk, of die van nu als er nog geen is (en leg die dan vast)."""
+        pins = self._load()
+        key = f"{host}:{port}"
+        if key not in pins:
+            pins[key] = self.fetch(host, port)
+            try:
+                self.path.write_text(json.dumps(pins, indent=2))
+            except OSError as exc:
+                log.warning("Vingerafdruk van %s niet opgeslagen: %s", key, exc)
+            log.info("Certificaat van %s vastgepind: %s", key, pins[key])
+        return pins[key]
+
+
+class UniFiClient:
+    """Werkt met UniFi OS (/api/auth/login) en met de oudere controller op poort 8443.
+
+    Zonder unifi_verify_ssl wordt het certificaat vastgepind: bij de eerste verbinding (of met
+    unifi_fingerprint) leggen we de vingerafdruk vast, en daarna praten we alleen nog met die controller.
+    """
+
+    def __init__(self, cfg: Config, pins: Pins | None = None, clock: Callable[[], float] = time.monotonic):
         self.cfg = cfg
         self.session = requests.Session()
+        # De controller staat in het eigen netwerk: geen proxy, en REQUESTS_CA_BUNDLE mag verify niet overschrijven.
+        self.session.trust_env = False
         self.session.verify = cfg.unifi_verify_ssl
         if not cfg.unifi_verify_ssl:
             urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+        self.pins = pins or Pins()
+        self.clock = clock
         self.base: str | None = None
         self.api_prefix = ""
+        self.login_failures = 0
+        self.next_login = 0.0
+
+    def _pin(self, base: str, host: str, port: int) -> None:
+        if self.cfg.unifi_verify_ssl:
+            return
+        try:
+            fingerprint = normalize_fingerprint(self.cfg.unifi_fingerprint) or self.pins.get(host, port)
+        except OSError as exc:
+            raise requests.ConnectionError(f"{host}:{port} niet bereikbaar: {exc}") from exc
+        self.session.mount(base + "/", PinnedAdapter(fingerprint))
+
+    def _mismatch(self, host: str, port: int) -> str:
+        try:
+            now = server_fingerprint(host, port)
+        except OSError:
+            return "certificaat klopt niet"
+        return (f"certificaat van {host}:{port} is veranderd (nu {now}). Klopt dat, bijvoorbeeld na een update "
+                "van de Cloud Key, zet die waarde dan in de optie unifi_fingerprint")
 
     def _login(self) -> None:
+        wait = self.next_login - self.clock()
+        if wait > 0:
+            raise UniFiError(f"inloggen mislukte eerder, volgende poging over {wait:.0f} s")
         creds = {"username": self.cfg.unifi_username, "password": self.cfg.unifi_password}
         host = self.cfg.unifi_host
         attempts = [
-            (f"https://{host}", "/api/auth/login", "/proxy/network"),
-            (f"https://{host}:8443", "/api/login", ""),
+            (f"https://{host}", 443, "/api/auth/login", "/proxy/network"),
+            (f"https://{host}:8443", 8443, "/api/login", ""),
         ]
-        last_error: Exception | None = None
-        for base, login_path, prefix in attempts:
+        errors = []
+        for base, port, login_path, prefix in attempts:
             try:
+                self._pin(base, host, port)
                 resp = self.session.post(base + login_path, json=creds, timeout=15)
                 if resp.status_code == 200:
                     csrf = resp.headers.get("X-CSRF-Token")
                     if csrf:
                         self.session.headers["X-CSRF-Token"] = csrf
                     self.base, self.api_prefix = base, prefix
+                    self.login_failures = 0
                     log.info("Ingelogd op UniFi via %s%s", base, login_path)
                     return
-                last_error = RuntimeError(f"{base}{login_path} gaf HTTP {resp.status_code}")
+                errors.append(f"{base}{login_path} gaf HTTP {resp.status_code}")
+            except requests.exceptions.SSLError as exc:
+                errors.append(self._mismatch(host, port) if "fingerprint" in str(exc).lower() else str(exc))
             except requests.RequestException as exc:
-                last_error = exc
-        raise RuntimeError(f"Inloggen op UniFi mislukt: {last_error}")
+                errors.append(str(exc))
+        delay = LOGIN_BACKOFF_SECONDS[min(self.login_failures, len(LOGIN_BACKOFF_SECONDS) - 1)]
+        self.login_failures += 1
+        self.next_login = self.clock() + delay
+        raise UniFiError(f"inloggen op UniFi mislukt ({'; '.join(errors)}), opnieuw over {delay} s")
 
     def _get(self, path: str, body: dict | None = None) -> list[dict]:
         """GET, of POST met `body` (sommige stat-endpoints willen een tijdvak in de body)."""

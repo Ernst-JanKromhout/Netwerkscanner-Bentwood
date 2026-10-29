@@ -19,6 +19,8 @@ De eerste keer legt de scanner alle aanwezige apparaten vast als beginsituatie, 
 | --- | --- | --- |
 | Nieuw apparaat | Ja (niet voor `trusted_macs`) | Ja |
 | Nieuwe open poort op niet-vertrouwd apparaat | Ja | Ja |
+| Afgekeurd apparaat weer online | Ja | Ja |
+| Storing van de scanner zelf (langer dan 30 minuten) en herstel | Ja | Ja |
 | Al het andere | Nee | Ja |
 
 Het dagrapport komt op `report_time` als melding in Home Assistant, en met `report_to_notify`
@@ -33,12 +35,29 @@ de volgende ronde (binnen 5 minuten).
 
 | Sensor | Waarde | Extra |
 | --- | --- | --- |
+| `sensor.netwerkscanner_status` | `werkt` of `storing` | `bronnen`: per bron of hij werkt, wanneer laatst gelukt en de fout |
 | `sensor.netwerkscanner_apparaten_online` | apparaten online | `bekend_totaal` |
+| `sensor.netwerkscanner_apparaten` | bekende apparaten | |
+| `sensor.netwerkscanner_apparaten_1` t/m `_3` | apparaten in dit deel | `apparaten`: naam, IP, status, online, open poorten |
+| `sensor.netwerkscanner_poorten` | soorten open poorten | `poorten`: poort, uitleg, risico, op welk apparaat |
+| `sensor.netwerkscanner_te_beoordelen` | apparaten die nog niet zijn goed- of afgekeurd | |
+| `sensor.netwerkscanner_aanvallen_vandaag` | aanvallen en mislukte logins vandaag | `meldingen` |
 | `sensor.netwerkscanner_gebeurtenissen_vandaag` | wijzigingen vandaag | |
-| `sensor.netwerkscanner_apparaten` | bekende apparaten | `apparaten`: naam, IP, MAC, online, vertrouwd, open poorten |
-| `sensor.netwerkscanner_laatste_wijzigingen` | tijd van de laatste wijziging | `wijzigingen`: de laatste 25, nieuwste eerst |
+| `sensor.netwerkscanner_laatste_wijzigingen` | tijd van de laatste wijziging | `wijzigingen`: de laatste 10, nieuwste eerst |
 
-Ook `sensor.netwerkscanner_te_beoordelen`: het aantal apparaten dat nog niet is goed- of afgekeurd.
+## Als de scanner zelf een storing heeft
+
+De scanner houdt bij of elke bron nog werkt: de UniFi-controller, de IPS-meldingen, de pingsweep en de koppeling
+met Home Assistant (voor de knoppen en de login-bewaking). Faalt een bron langer dan 30 minuten, dan krijg je één
+pushmelding, en één als hij weer werkt. Op het dashboard staat dan bovenaan welke bron niet werkt en waarom.
+Een IPS-uitlezing die sinds de start nog nooit werkte geeft geen melding, omdat dat op sommige UniFi-versies
+gewoon niet kan; je ziet het wel in `sensor.netwerkscanner_status`.
+
+Lukt inloggen op UniFi niet, bijvoorbeeld na een wachtwoordwissel, dan wacht de scanner steeds langer
+(1, 2, 5 en daarna 15 minuten) voor hij het opnieuw probeert, zodat UniFi je account niet blokkeert.
+
+Kwam een pushmelding niet aan omdat Home Assistant even weg was, dan probeert de scanner hem elke minuut
+opnieuw, tot een dag lang. Daarna staat hij alleen nog in het dagrapport.
 
 ## Goedkeuren en afkeuren
 
@@ -104,6 +123,16 @@ heeft ze bovenaan. 🛡️ betekent geblokkeerd, 🚨 dat de gateway het alleen 
 
 `notify_services` accepteert elke dienst die `title` en `message` kent, bijvoorbeeld
 `notify.mobile_app_<telefoon>` of `telegram_bot.send_message`.
+
+`unifi_fingerprint`: laat leeg. De scanner pint het certificaat van je controller bij de eerste verbinding vast
+(op `/data/unifi_fingerprints.json`) en praat daarna alleen nog met die controller, ook als het certificaat
+zelfondertekend is. Zo kan niemand op je netwerk zich voordoen als de Cloud Key en je UniFi-wachtwoord
+onderscheppen. Krijgt de Cloud Key een nieuw certificaat, bijvoorbeeld na een update, dan meldt de scanner
+een storing met de nieuwe vingerafdruk. Klopt dat, vul die waarde dan hier in.
+Met `unifi_verify_ssl: true` controleert de scanner het certificaat op de gewone manier en pint hij niet.
+
+`scan_workers` (1 tot 4, standaard 2): hoeveel poortscans tegelijk lopen. Een nieuw apparaat en **Nu scannen**
+gaan altijd voor op de nachtelijke scans.
 
 `dashboard_path` is de pagina die opent als je op een pushmelding tikt, standaard `/dashboard-netwerk/overzicht`.
 Pas hem aan als je dashboard een ander adres heeft.

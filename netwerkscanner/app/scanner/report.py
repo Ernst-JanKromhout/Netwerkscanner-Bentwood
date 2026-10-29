@@ -7,6 +7,8 @@ import json
 from .db import Database, label
 
 SECTIONS = [
+    ("scanner_fault", "Storingen van de scanner"),
+    ("scanner_ok", "Scanner werkt weer"),
     ("intrusion", "Aanvallen (IPS van de gateway)"),
     ("login_failed", "Mislukte inlogpogingen op Home Assistant"),
     ("new_device", "Nieuwe apparaten"),
@@ -65,6 +67,10 @@ def _line(db: Database, type_: str, mac: str | None, d: dict) -> str:
         return f"{d.get('signature')} van {d.get('src')} naar {d.get('dst')} ({blocked})"
     if type_ == "login_failed":
         return f"van {d.get('host')} ({d.get('ip')})"
+    if type_ == "scanner_fault":
+        return f"{d.get('bron')}: {d.get('fout') or 'onbekende fout'}"
+    if type_ == "scanner_ok":
+        return f"{d.get('bron')}"
     if type_ == "baseline":
         return f"{d.get('devices')} apparaten vastgelegd als beginsituatie"
     return f"{who}: {json.dumps(d, ensure_ascii=False)}"

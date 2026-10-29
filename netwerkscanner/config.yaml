@@ -1,5 +1,5 @@
 name: Netwerkscanner
-version: "0.1.12"
+version: "0.2.0"
 slug: netwerkscanner
 description: Scant het thuisnetwerk, houdt historie bij en meldt nieuwe apparaten en poorten.
 url: https://github.com/Ernst-JanKromhout/Netwerkscanner-Bentwood
@@ -22,6 +22,7 @@ options:
   unifi_password: ""
   unifi_site: default
   unifi_verify_ssl: false
+  unifi_fingerprint: ""
   subnets: []
   notify_services: []
   dashboard_path: /dashboard-netwerk/overzicht
@@ -35,6 +36,7 @@ options:
   report_to_notify: true
   absent_hours: 24
   top_ports: 1000
+  scan_workers: 2
   log_level: info
 schema:
   unifi_host: str
@@ -42,6 +44,7 @@ schema:
   unifi_password: password
   unifi_site: str
   unifi_verify_ssl: bool
+  unifi_fingerprint: str?
   subnets:
     - str
   notify_services:
@@ -58,4 +61,5 @@ schema:
   report_to_notify: bool
   absent_hours: int(1,720)
   top_ports: int(10,65535)
+  scan_workers: int(1,4)
   log_level: list(debug|info|warning|error)

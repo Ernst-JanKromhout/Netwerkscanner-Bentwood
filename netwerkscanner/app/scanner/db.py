@@ -64,6 +64,19 @@ CREATE TABLE IF NOT EXISTS events (
 );
 CREATE INDEX IF NOT EXISTS idx_events_ts ON events (ts);
 
+-- Pushmeldingen die niet aankwamen (HA even weg); worden later opnieuw geprobeerd.
+CREATE TABLE IF NOT EXISTS outbox (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts          TEXT NOT NULL,
+    event_id    INTEGER,
+    title       TEXT NOT NULL,
+    message     TEXT NOT NULL,
+    url         TEXT,
+    note_id     TEXT,  -- melding in HA zelf, als die ook niet lukte
+    note_text   TEXT,
+    tries       INTEGER NOT NULL DEFAULT 1
+);
+
 CREATE TABLE IF NOT EXISTS meta (
     key    TEXT PRIMARY KEY,
     value  TEXT NOT NULL
@@ -263,12 +276,40 @@ class Database:
             "SELECT * FROM events WHERE ts >= ? AND ts < ? ORDER BY ts", (start, end)
         ).fetchall()
 
+    # meldingen die nog weg moeten
+
+    def queue_push(self, ts: str, event_id: int | None, title: str, message: str | None, url: str | None,
+                   note_id: str | None = None, note_text: str | None = None) -> None:
+        """`message` None: de push kwam aan, alleen de melding in HA nog niet."""
+        self.conn.execute(
+            "INSERT INTO outbox (ts, event_id, title, message, url, note_id, note_text) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (ts, event_id, title, message or "", url, note_id, note_text),
+        )
+
+    def outbox(self) -> list[sqlite3.Row]:
+        return self.conn.execute("SELECT * FROM outbox ORDER BY id").fetchall()
+
+    def update_outbox(self, row_id: int, push_done: bool, note_done: bool) -> None:
+        if push_done and note_done:
+            self.conn.execute("DELETE FROM outbox WHERE id = ?", (row_id,))
+            return
+        sets = ["tries = tries + 1"]
+        if push_done:
+            sets.append("message = ''")
+        if note_done:
+            sets.append("note_id = NULL")
+        self.conn.execute(f"UPDATE outbox SET {', '.join(sets)} WHERE id = ?", (row_id,))
+
+    def drop_outbox_before(self, before: str) -> int:
+        return self.conn.execute("DELETE FROM outbox WHERE ts < ?", (before,)).rowcount
+
     # onderhoud
 
     def prune(self, now: datetime) -> None:
-        """Waarnemingen na 90 dagen weg, scans na een jaar (de laatste per apparaat blijft)."""
+        """Waarnemingen na 90 dagen weg, scans en gebeurtenissen na een jaar (de laatste scan per apparaat blijft)."""
         self.conn.execute("DELETE FROM observations WHERE ts < ?", (iso(now - timedelta(days=90)),))
         self.conn.execute(
             "DELETE FROM scans WHERE ts < ? AND id NOT IN (SELECT MAX(id) FROM scans GROUP BY mac, kind)",
             (iso(now - timedelta(days=365)),),
         )
+        self.conn.execute("DELETE FROM events WHERE ts < ?", (iso(now - timedelta(days=365)),))

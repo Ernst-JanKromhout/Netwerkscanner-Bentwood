@@ -1,5 +1,18 @@
 # Wat is er nieuw
 
+## 0.2.0
+
+Betrouwbaarheid: de scanner merkt nu zelf als er iets misgaat.
+
+- **Storingsmelding**: werkt UniFi, de pingsweep of de koppeling met Home Assistant langer dan 30 minuten niet, dan krijg je een pushmelding, en een als het weer werkt. Op het dashboard staat bovenaan wat er mis is. Nieuwe sensor *Netwerk: scanner* (`werkt` of `storing`).
+- **Inloggen op UniFi** wacht na een mislukte poging steeds langer (tot 15 minuten), zodat UniFi je account niet blokkeert na bijvoorbeeld een wachtwoordwissel.
+- **Knoppen blijven werken**: de verbinding met Home Assistant krijgt elke 30 seconden een ping. Valt hij half weg, dan verbindt de scanner opnieuw in plaats van stil te blijven wachten.
+- **Afgekeurd apparaat weer online**: daar krijg je nu meteen een pushmelding van, niet pas in het dagrapport.
+- **Scans met voorrang**: een nieuw apparaat en *Nu scannen* gaan voor op de nachtelijke scans, en er lopen twee scans tegelijk (optie `scan_workers`). Zondag hoef je niet meer uren te wachten.
+- **Certificaat van de Cloud Key vastgepind**: de scanner praat alleen nog met jouw controller, zodat niemand je UniFi-wachtwoord kan onderscheppen. Nieuwe optie `unifi_fingerprint`, leeg laten.
+- **Meldingen die niet aankwamen** (bijvoorbeeld tijdens een update van HA) worden opnieuw verstuurd.
+- Gebeurtenissen ouder dan een jaar worden opgeruimd.
+
 ## 0.1.12
 
 - Geen waarschuwing meer over sensoren groter dan 16 KB. De apparatenlijst staat nu verdeeld over drie sensoren (*apparaten deel 1 t/m 3*), met alleen wat het dashboard toont, en elke lijst blijft onder de grens.

@@ -6,6 +6,7 @@ import json
 from datetime import datetime, timedelta
 
 from .db import Database, iso, label, utcnow
+from .health import Health
 from .homeassistant import HomeAssistant
 from .ports import explain, risk
 from .report import SECTIONS, _line
@@ -25,6 +26,7 @@ SENSOR_IDS = (
     "sensor.netwerkscanner_te_beoordelen",
     "sensor.netwerkscanner_aanvallen_vandaag",
     "sensor.netwerkscanner_laatste_wijzigingen",
+    "sensor.netwerkscanner_status",
 )
 
 
@@ -171,8 +173,13 @@ def _ip_key(ip: str) -> tuple:
         return (999,)
 
 
-def publish(db: Database, ha: HomeAssistant) -> None:
+def publish(db: Database, ha: HomeAssistant, health: Health | None = None) -> None:
     """Zet alle sensoren en de keuzelijst met te beoordelen apparaten in HA."""
+    if health is not None:
+        state, sources = health.summary()
+        ha.set_sensor("sensor.netwerkscanner_status", state,
+                      {"friendly_name": "Netwerk: scanner", "icon": "mdi:heart-pulse" if state == "werkt"
+                       else "mdi:heart-broken", "bronnen": sources})
     midnight = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
     today = db.events_between(iso(midnight.astimezone()), iso(utcnow() + timedelta(seconds=1)))
     online = db.conn.execute("SELECT COUNT(*) FROM devices WHERE present = 1").fetchone()[0]

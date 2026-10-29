@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import itertools
 import logging
 import os
 import queue
@@ -17,6 +18,7 @@ from .db import Database, iso, label, utcnow
 from .ports import RISK_LABELS, explain, risk
 from .engine import Engine, Sighting
 from .ha_events import NOTIFICATIONS, EventListener
+from .health import Health
 from .homeassistant import HomeAssistant
 from .mqtt import MqttSensors, broker_settings
 from .overview import SENSOR_IDS, publish
@@ -29,51 +31,86 @@ from .unifi import UniFiClient, UniFiError
 log = logging.getLogger("netwerkscanner")
 
 
-class ScanWorker(threading.Thread):
-    """Poortscans in een eigen thread, zodat een lange scan het pollen niet ophoudt."""
+# Lager is eerder: met de hand gestart, dan nieuwe apparaten, dan de nachtelijke ronde.
+PRIO_MANUAL, PRIO_NEW, PRIO_NIGHTLY = 0, 1, 2
+
+
+class ScanWorker:
+    """Poortscans in eigen threads, zodat een lange scan het pollen niet ophoudt.
+
+    Eén wachtrij met voorrang: een nieuw apparaat of Nu scannen hoeft niet te wachten tot de
+    zondagse volledige scans van het hele netwerk klaar zijn. Er lopen `cfg.scan_workers` scans tegelijk.
+    """
 
     def __init__(self, cfg: Config, ha: HomeAssistant):
-        super().__init__(daemon=True, name="scan-worker")
         self.cfg = cfg
         self.ha = ha
-        self.jobs: queue.Queue[tuple[str, str, str]] = queue.Queue()
-        self.pending: set[str] = set()
+        self.jobs: queue.PriorityQueue[tuple[int, int, str, str, str]] = queue.PriorityQueue()
+        self.queued: dict[tuple[str, str], tuple[int, int]] = {}  # (mac, kind) -> (voorrang, volgnummer)
+        self.running: set[tuple[str, str]] = set()
         self.manual: set[str] = set()  # met de hand gestart: uitslag als melding in HA
         self.lock = threading.Lock()
+        self._seq = itertools.count()
 
-    def request(self, mac: str, ip: str, kind: str) -> None:
+    def request(self, mac: str, ip: str, kind: str, priority: int = PRIO_NEW) -> bool:
+        """Zet een scan in de rij. Staat hij er al met minder voorrang, dan schuift hij naar voren."""
+        key = (mac, kind)
         with self.lock:
-            if mac in self.pending:
-                return
-            self.pending.add(mac)
-        self.jobs.put((mac, ip, kind))
+            if key in self.running:
+                return False
+            current = self.queued.get(key)
+            if current is not None and current[0] <= priority:
+                return False
+            seq = next(self._seq)
+            self.queued[key] = (priority, seq)
+        self.jobs.put((priority, seq, mac, ip, kind))
+        return True
 
-    def run(self) -> None:
+    def start(self) -> None:
+        for i in range(max(1, self.cfg.scan_workers)):
+            threading.Thread(target=self._loop, daemon=True, name=f"scan-worker-{i + 1}").start()
+
+    def next_job(self, block: bool = True) -> tuple[str, str, str] | None:
+        """De volgende scan, of None als deze vervangen is door dezelfde scan met meer voorrang."""
+        _, seq, mac, ip, kind = self.jobs.get(block)
+        with self.lock:
+            current = self.queued.get((mac, kind))
+            if current is None or current[1] != seq:
+                return None
+            del self.queued[(mac, kind)]
+            self.running.add((mac, kind))
+        return mac, ip, kind
+
+    def _loop(self) -> None:
         db = Database(DB_PATH)
         engine = Engine(db, self.cfg, self.ha)
         while True:
-            mac, ip, kind = self.jobs.get()
+            job = self.next_job()
+            if job is None:
+                continue
+            mac, ip, kind = job
             try:
                 host, duration = nmap.port_scan(ip, kind, self.cfg.top_ports)
                 engine.handle_scan(mac, ip, kind, host, duration)
                 log.info("Scan %s van %s klaar in %.0f s", kind, ip, duration)
-                if mac in self.manual:
+                if kind == "top" and mac in self.manual:
                     self._report_manual(db, mac, ip, host, duration)
             except Exception:
                 log.exception("Scan %s van %s mislukt", kind, ip)
             finally:
                 with self.lock:
-                    self.pending.discard(mac)
-                    self.manual.discard(mac)
+                    self.running.discard((mac, kind))
+                    if kind == "top":
+                        self.manual.discard(mac)
 
     def scan_now(self, mac: str, ip: str) -> bool:
-        """Scan op verzoek; False als er al een scan van dit apparaat loopt of wacht."""
+        """Scan op verzoek, vooraan in de rij; False als hij al loopt of al vooraan staat.
+
+        Ook dan komt de uitslag als melding: de scan die al liep of wachtte telt als deze.
+        """
         with self.lock:
-            if mac in self.pending:
-                return False
             self.manual.add(mac)
-        self.request(mac, ip, "top")
-        return True
+        return self.request(mac, ip, "top", PRIO_MANUAL)
 
     def _report_manual(self, db: Database, mac: str, ip: str, host, duration: float) -> None:
         device = db.device(mac)
@@ -94,6 +131,7 @@ class Scanner:
     def __init__(self, cfg: Config):
         self.cfg = cfg
         self.ha = HomeAssistant()
+        self.health = Health()
         self.db = Database(DB_PATH)
         self.worker = ScanWorker(cfg, self.ha)
         self.engine = Engine(self.db, cfg, self.ha, self.worker.request)
@@ -105,7 +143,9 @@ class Scanner:
             clients = self.unifi.active_clients()
         except (UniFiError, requests.RequestException) as exc:
             log.warning("UniFi uitlezen mislukt, volgende ronde opnieuw: %s", exc)
+            self.health.fail("unifi", str(exc))
             return
+        self.health.ok("unifi")
         self.engine.handle_sightings(
             [Sighting(c.mac, c.ip, c.hostname, c.name, c.vendor, c.network) for c in clients], "unifi"
         )
@@ -113,7 +153,12 @@ class Scanner:
     def ping_sweep(self) -> None:
         if not self.cfg.subnets:
             return
-        hosts = nmap.ping_sweep(self.cfg.subnets)
+        try:
+            hosts = nmap.ping_sweep(self.cfg.subnets)
+        except Exception as exc:
+            self.health.fail("ping", str(exc))
+            raise
+        self.health.ok("ping")
         self.engine.handle_sightings(
             [Sighting(h.mac, h.ip, h.hostname, vendor=h.vendor) for h in hosts if h.mac], "ping"
         )
@@ -126,7 +171,7 @@ class Scanner:
         devices = self.db.present_devices()
         log.info("Nachtelijke %s-scan van %d apparaten", kind, len(devices))
         for device in devices:
-            self.worker.request(device["mac"], device["ip"], kind)
+            self.worker.request(device["mac"], device["ip"], kind, PRIO_NIGHTLY)
         self.db.prune(utcnow())
 
     def daily_report(self) -> None:
@@ -141,7 +186,16 @@ class Scanner:
         log.info("Dagrapport verstuurd met %d gebeurtenissen", count)
 
     def update_sensors(self) -> None:
-        publish(self.db, self.ha)
+        publish(self.db, self.ha, self.health)
+
+    def check_health(self) -> None:
+        """Storingen van de scanner zelf melden, en meldingen die niet aankwamen opnieuw proberen."""
+        transitions = self.health.check()
+        self.engine.handle_health(transitions)
+        if transitions:
+            self.update_sensors()
+        if self.engine.retry_pushes():
+            log.info("Eerder mislukte meldingen alsnog verstuurd")
 
     def poll_threats(self) -> None:
         now_ms = int(time.time() * 1000)
@@ -150,7 +204,9 @@ class Scanner:
             records = self.unifi.threat_records(since, now_ms)
         except (UniFiError, requests.RequestException) as exc:
             log.warning("IPS-meldingen uit UniFi lezen mislukt: %s", exc)
+            self.health.fail("threats", str(exc))
             return
+        self.health.ok("threats")
         threats = [t for t in (parse_threat(r) for r in records) if t is not None]
         count = self.engine.handle_threats(threats)
         if count:
@@ -166,7 +222,7 @@ class Scanner:
                 if login:
                     log.warning("Mislukte inlogpoging op HA van %s (%s)", *login)
                     Engine(self._event_db, self.cfg, self.ha).handle_failed_login(*login)
-                    publish(self._event_db, self.ha)
+                    publish(self._event_db, self.ha, self.health)
             return
         parsed = parse(event_type, data)
         if parsed is None:
@@ -182,7 +238,13 @@ class Scanner:
             return
         count = Engine(self._event_db, self.cfg, self.ha).review(action, mac, name=name)
         log.info("Beoordeling %s voor %s: %d apparaat/apparaten", action, mac or "alle openstaande", count)
-        publish(self._event_db, self.ha)
+        publish(self._event_db, self.ha, self.health)
+
+    def _ha_events_status(self, ok: bool, error: str | None) -> None:
+        if ok:
+            self.health.ok("ha_events")
+        else:
+            self.health.fail("ha_events", error or "verbinding verbroken")
 
     def use_mqtt(self) -> None:
         """Sensoren via MQTT als er een broker is, anders zoals voorheen via de REST-API."""
@@ -200,7 +262,7 @@ class Scanner:
         self.db.set_trusted(self.cfg.trusted_macs)
         self.use_mqtt()
         self.worker.start()
-        EventListener(self.on_ha_event).start()
+        EventListener(self.on_ha_event, on_status=self._ha_events_status).start()
         now = datetime.now()
         due = {
             "unifi": now,
@@ -208,6 +270,7 @@ class Scanner:
             "absent": now + timedelta(minutes=5),
             "sensors": now + timedelta(minutes=1),
             "threats": now + timedelta(seconds=45),
+            "health": now + timedelta(minutes=1),
             "nightly": next_daily(now, self.cfg.nightly_scan_time),
             "report": next_daily(now, self.cfg.report_time),
         }
@@ -236,6 +299,8 @@ class Scanner:
             self.engine.check_absent()
         elif task == "sensors":
             self.update_sensors()
+        elif task == "health":
+            self.check_health()
         elif task == "nightly":
             self.nightly(when)
         elif task == "report":
@@ -246,6 +311,8 @@ class Scanner:
             return now + timedelta(seconds=self.cfg.unifi_interval_seconds)
         if task == "ping":
             return now + timedelta(minutes=self.cfg.ping_interval_minutes)
+        if task == "health":
+            return now + timedelta(minutes=1)
         if task in ("absent", "sensors", "threats"):
             return now + timedelta(minutes=5)
         if task == "nightly":
