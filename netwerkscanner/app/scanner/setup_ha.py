@@ -105,14 +105,12 @@ SCRIPTS = {
     }
 }
 
-def devices_table(part: int, parts: int = 3) -> str:
-    """Eén deel van de apparatenlijst, zodat de tabellen op een breed scherm naast elkaar passen."""
+def devices_table(part: int) -> str:
+    """Eén deel van de apparatenlijst (elk deel is een eigen sensor), zodat de tabellen naast elkaar passen."""
     return (
-        "{% set all = state_attr('sensor.netwerkscanner_apparaten', 'apparaten') or [] %}"
-        f"{{% set n = (all | length / {parts}) | round(0, 'ceil') | int %}}"
-        f"{{% set ds = all[{part} * n:{part + 1} * n] %}}"
+        f"{{% set ds = state_attr('sensor.netwerkscanner_apparaten_{part + 1}', 'apparaten') or [] %}}"
         "{% if ds %}| | Naam | IP | Poorten |\n|:-:|---|---|---|\n"
-        "{% for d in ds %}{% set p = d.poorten | map('regex_replace', '/.*', '') | list %}"
+        "{% for d in ds %}{% set p = d.poorten %}"
         "| {{ '❌' if d.status == 'afgekeurd' else ('✅' if d.status == 'goedgekeurd' else '⚠️') }}"
         "{{ '' if d.online else '💤' }} | {{ d.naam }} | {{ d.ip }} | "
         "{{ (p[:3] | join(', ') ~ (' +' ~ (p | length - 3) if p | length > 3 else '')) if p "
@@ -131,7 +129,7 @@ def ports_table(part: int, parts: int = 3) -> str:
         f"{{% set ps = all[{part} * n:{part + 1} * n] %}}"
         "{% if ps %}| Poort | Waarvoor | Op |\n|---|---|---|\n"
         "{% for p in ps %}| {{ {'hoog': '🔴', 'let op': '🟠'}.get(p.risico, '🟢') }} **{{ p.poort.split('/')[0] }}** | {{ p.uitleg }} | "
-        "{{ p.apparaten[0] if p.apparaten | length == 1 else (p.apparaten | length ~ ' apparaten') }} |\n"
+        "{{ p.op }} |\n"
         "{% endfor %}"
         + ("{% else %}*Nog geen open poorten gevonden.*" if part == 0 else "")
         + "{% endif %}"

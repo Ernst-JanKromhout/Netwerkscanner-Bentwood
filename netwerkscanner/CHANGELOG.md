@@ -1,5 +1,11 @@
 # Wat is er nieuw
 
+## 0.1.12
+
+- Geen waarschuwing meer over sensoren groter dan 16 KB. De apparatenlijst staat nu verdeeld over drie sensoren (*apparaten deel 1 t/m 3*), met alleen wat het dashboard toont, en elke lijst blijft onder de grens.
+- De poortenlijst noemt per poort één apparaat of hoeveel het er zijn, in plaats van alle namen.
+- Het dashboard schakelt vanzelf over op de nieuwe sensoren.
+
 ## 0.1.11
 
 - Sensoren gaan via MQTT, als de Mosquitto-app draait. Ze staan nu onder één apparaat **Netwerkscanner**, overleven een herstart van Home Assistant en zijn te hernoemen of aan een ruimte te koppelen. De entity_id's blijven hetzelfde, dus je dashboard blijft werken. Zonder Mosquitto gaat het zoals voorheen.
