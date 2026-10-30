@@ -1,5 +1,9 @@
 # Wat is er nieuw
 
+## 0.2.3
+
+- Hostnaamhint voor reMarkable: `imx8mm-ferrari` is een reMarkable Paper Pro, `reMarkable` een andere reMarkable-tablet.
+
 ## 0.2.2
 
 Bij een nieuw apparaat zie je nu meteen wat het is.

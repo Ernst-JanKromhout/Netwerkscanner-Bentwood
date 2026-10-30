@@ -26,7 +26,10 @@ PREFIX_FILES = (
 HIDDEN = {"private", "ieee registration authority"}
 
 # Standaardnamen uit bouwsets en chips. Een apparaat met zo'n naam heeft de fabrikant niet eens hernoemd.
+# Specifieke apparaten staan boven de chips: 'imx8mm-ferrari' is een reMarkable, niet zomaar een NXP-bordje.
 HOSTNAME_HINTS: tuple[tuple[str, str], ...] = (
+    (r"ferrari", "reMarkable Paper Pro (interne codenaam 'ferrari')"),
+    (r"^remarkable", "reMarkable-tablet"),
     (r"imx[6-9]", "NXP i.MX-chip met embedded Linux: vaak industriële, energie- of audio-apparatuur"),
     (r"rk3[0-9]{3}|rockchip", "Rockchip-chip: vaak een mediaspeler, tablet of goedkope camera"),
     (r"^esp[-_]|esp32|esp8266|espressif", "ESP-chip: een klein slim apparaat (stekker, sensor, ESPHome)"),
