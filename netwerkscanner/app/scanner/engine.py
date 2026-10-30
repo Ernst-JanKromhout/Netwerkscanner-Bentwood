@@ -18,6 +18,7 @@ from .homeassistant import HomeAssistant
 from .nmap import Host
 from .ports import RISK_LABELS, explain, risk
 from .security import Threat
+from .vendor import HIDDEN, describe_vendor, identify
 
 log = logging.getLogger(__name__)
 
@@ -65,8 +66,13 @@ class Engine:
         fields = {k: v for k, v in (("ip", s.ip), ("hostname", s.hostname), ("name", s.name),
                                     ("vendor", s.vendor), ("network", s.network)) if v}
         existing = self.db.device(s.mac)
+        if s.vendor and s.vendor.strip().lower() in HIDDEN:
+            fields.pop("vendor")  # 'Private' is geen naam; zonder dit staat het als label op het dashboard
 
         if existing is None:
+            info = identify(s.mac, s.vendor)
+            if info.vendor:
+                fields["vendor"] = info.vendor
             trusted = s.mac in self.cfg.trusted_macs
             self.db.upsert_device(s.mac, ts, trusted=int(trusted), **fields)
             self.db.add_observation(ts, s.mac, s.ip, s.hostname, source)
@@ -75,8 +81,8 @@ class Engine:
             if bootstrap:
                 return True
             device = self.db.device(s.mac)
-            detail = {"ip": s.ip, "hostname": s.hostname, "name": s.name, "vendor": s.vendor,
-                      "network": s.network, "random_mac": is_random_mac(s.mac)}
+            detail = {"ip": s.ip, "hostname": s.hostname, "name": s.name, "vendor": info.vendor,
+                      "vendor_status": info.status, "network": s.network, "random_mac": is_random_mac(s.mac)}
             event_id = self.db.add_event(ts, "new_device", s.mac, detail)
             if not trusted:
                 lines = [describe(device)]
@@ -84,7 +90,9 @@ class Engine:
                     lines.append(f"Netwerk: {s.network}")
                 if detail["random_mac"]:
                     lines.append("Willekeurig (privé) MAC-adres: mogelijk een bekende telefoon met een nieuw adres.")
-                lines.append("Poortscan is gestart.")
+                lines.extend(describe_vendor(s.mac, info, s.hostname))
+                lines.append("Poortscan is gestart, de uitslag volgt in een tweede melding." if s.ip
+                             else "Nog geen IP-adres, dus nog geen poortscan.")
                 self._push(event_id, "Nieuw apparaat op je netwerk", "\n".join(lines))
             return True
 
@@ -93,6 +101,10 @@ class Engine:
             # DNS geeft soms een andere of ingekorte naam dan UniFi; zonder dit wisselt de naam elke scan.
             hostname = existing["hostname"]
             fields.pop("hostname", None)
+        if not existing["vendor"] and "vendor" not in fields:
+            found = identify(s.mac).vendor  # vult apparaten van voor deze versie alsnog aan
+            if found:
+                fields["vendor"] = found
         changes: list[Change] = diff_identity(existing["ip"], existing["hostname"], s.ip, hostname)
         came_back = not existing["present"]
         for change in changes:
@@ -133,6 +145,8 @@ class Engine:
         if host is None or not host.up:
             self.db.add_scan(ts, mac, ip, kind, duration_s, False, {})
             log.info("Scan %s van %s: apparaat reageerde niet", kind, ip)
+            if kind == "top" and self.db.last_scan_ports(mac, kind) is None:
+                self._report_first_scan(mac, ip, None, ts)
             return
         previous = self.db.last_scan_ports(mac, kind)
         self.db.add_scan(ts, mac, ip, kind, duration_s, True, host.ports)
@@ -141,7 +155,8 @@ class Engine:
         if previous is None:
             if kind == "top":
                 ports = [{"port": p, "proto": proto, **info} for (p, proto), info in sorted(host.ports.items())]
-                self.db.add_event(ts, "first_scan", mac, {"ip": ip, "ports": ports})
+                event_id = self.db.add_event(ts, "first_scan", mac, {"ip": ip, "ports": ports})
+                self._report_first_scan(mac, ip, host.ports, ts, event_id)
             return
 
         for change in diff_ports(previous, host.ports):
@@ -151,6 +166,46 @@ class Engine:
                 service = " ".join(v for v in (d["service"], d["version"]) if v) or "onbekende dienst"
                 self._push(event_id, "Nieuwe open poort",
                            f"{describe(device)}\nPoort {d['port']}/{d['proto']}: {service}\n{RISK_LABELS[risk(d['port'])]} {explain(d['port'], d['service'])}")
+
+    def _report_first_scan(self, mac: str, ip: str, ports: dict | None, ts: str, event_id: int | None = None) -> None:
+        """Uitslag van de eerste scan van een nieuw apparaat als tweede melding, zodat je meteen ziet wat het is.
+
+        Alleen voor apparaten die net nieuw waren (laatste dag) en niet vertrouwd zijn, en één keer per uitslag:
+        reageerde het eerst niet, dan volgt de echte uitslag later nog.
+        """
+        device = self.db.device(mac)
+        if device is None or device["trusted"]:
+            return
+        since = iso(datetime.fromisoformat(ts) - timedelta(days=1))
+        if not any(e["mac"] == mac for e in self.db.events_of_types(("new_device",), since)):
+            return
+        key = f"first_scan_reported_{mac}" if ports is not None else f"first_scan_down_{mac}"
+        if self.db.get_meta(key):
+            return
+        self.db.set_meta(key, ts)
+        name = label(device, ip)
+        lines = [describe(device)]
+        lines.extend(describe_vendor(mac, identify(mac, device["vendor"]), device["hostname"]))
+        if ports is None:
+            title = f"Poortscan: {name} reageerde niet"
+            lines.append("Geen antwoord op de poortscan. Vaak een telefoon of een apparaat met een firewall. "
+                         "De nachtscan probeert het opnieuw.")
+        elif not ports:
+            title = f"Poortscan klaar: {name}"
+            lines.append("Geen open poorten.")
+        else:
+            title = f"Poortscan klaar: {name}"
+            order = {"hoog": 0, "let op": 1, "normaal": 2}
+            items = sorted(ports.items(), key=lambda kv: (order[risk(kv[0][0])], kv[0]))
+            lines.append(f"{len(ports)} open poort(en):")
+            for (port, proto), info in items:
+                lines.append(f"{RISK_LABELS[risk(port)]} {port}/{proto} {explain(port, info.get('service'))}")
+            if any(risk(port) == "hoog" for port, _ in ports):
+                lines.append("Er staat een poort met hoog risico open. Vertrouw je het niet, zet het dan apart "
+                             "of blokkeer het in UniFi.")
+        if event_id is None:
+            event_id = self.db.add_event(ts, "first_scan_down", mac, {"ip": ip})
+        self._push(event_id, title, "\n".join(lines))
 
     def _push(self, event_id: int, title: str, message: str, review_hint: bool = True) -> None:
         """Melding in HA en op de telefoon. Lukt een van beide niet (HA even weg), dan later opnieuw."""

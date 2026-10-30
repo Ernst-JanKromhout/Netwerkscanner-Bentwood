@@ -46,6 +46,10 @@ def _line(db: Database, type_: str, mac: str | None, d: dict) -> str:
     who = _label(db, mac)
     if type_ == "new_device":
         extra = ", willekeurig MAC" if d.get("random_mac") else ""
+        if d.get("vendor"):
+            extra += f", {d['vendor']}"
+        elif d.get("vendor_status") in ("verborgen", "onbekend"):
+            extra += f", ⚠️ fabrikant {d['vendor_status']}"
         return f"{who}: {d.get('ip') or 'geen IP'}, {mac}{extra}"
     if type_ in ("port_opened", "port_closed"):
         return f"{who} ({d.get('ip')}): {_port(d)}"
