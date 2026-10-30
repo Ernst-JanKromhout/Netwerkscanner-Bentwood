@@ -18,11 +18,30 @@ De eerste keer legt de scanner alle aanwezige apparaten vast als beginsituatie, 
 | Gebeurtenis | Pushmelding | Dagrapport |
 | --- | --- | --- |
 | Nieuw apparaat | Ja (niet voor `trusted_macs`) | Ja |
+| Uitslag van de eerste poortscan van een nieuw apparaat | Ja (niet voor `trusted_macs`) | Ja |
 | Nieuwe open poort op niet-vertrouwd apparaat | Ja | Ja |
 | Afgekeurd apparaat weer online | Ja | Ja |
 | Onbekend netwerk (één keer per netwerk) | Ja | Ja |
 | Storing van de scanner zelf (langer dan 30 minuten) en herstel | Ja | Ja |
 | Al het andere | Nee | Ja |
+
+### Wat is dit apparaat?
+
+De melding bij een nieuw apparaat zegt wie het maakte. De scanner zoekt de fabrikant op via de eerste drie
+bytes van het MAC-adres, in de lijst die nmap meelevert (geen internet nodig). Je ziet dan:
+
+- **Fabrikant: ...** als die bekend is. Die komt ook op het dashboard, ook bij apparaten die er al waren.
+- **⚠️ Fabrikant verborgen** als de fabrikant zijn prefix anoniem registreerde (*Private*). Dat mag, maar het
+  zegt je niets. Kijk dan extra goed naar de poorten en de hostnaam.
+- **⚠️ Fabrikant onbekend** als het prefix in geen enkele lijst staat.
+- **Hostnaam wijst op: ...** als de hostnaam een chip of bouwset verraadt, zoals `imx8mm-...` (NXP i.MX,
+  embedded Linux) of `esp32-...` (ESP-chip).
+
+Een willekeurig (privé) MAC-adres krijgt geen waarschuwing: dat is bijna altijd een telefoon of laptop.
+
+Zodra de eerste poortscan klaar is, volgt een tweede melding met de open poorten, met kleur en uitleg en de
+gevaarlijkste bovenaan. Reageert het apparaat niet, dan hoor je dat ook, en de echte uitslag volgt na de
+nachtscan.
 
 Het dagrapport komt op `report_time` als melding in Home Assistant, en met `report_to_notify`
 ook als korte samenvatting op je telefoon.

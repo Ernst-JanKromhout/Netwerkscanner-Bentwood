@@ -1,5 +1,16 @@
 # Wat is er nieuw
 
+## 0.2.2
+
+Bij een nieuw apparaat zie je nu meteen wat het is.
+
+- **Fabrikant in de melding**, opgezocht via het MAC-prefix in de lijst van nmap. Geen internet nodig.
+- **Waarschuwing ⚠️** als de fabrikant zijn prefix anoniem registreerde (*Private*) of als het prefix nergens bekend is.
+- **Hint uit de hostnaam**: namen als `imx8mm-...`, `esp32-...` of `tasmota-...` verraden de chip of firmware.
+- **Tweede melding met de open poorten** zodra de eerste poortscan klaar is, met kleur en uitleg en hoog risico bovenaan. Reageert het apparaat niet, dan hoor je dat ook.
+- Apparaten zonder fabrikant krijgen die alsnog, en *Private* van UniFi staat niet meer als naam op het dashboard.
+- In het dagrapport staat bij een nieuw apparaat de fabrikant of de waarschuwing.
+
 ## 0.2.1
 
 - **Onbekende netwerken**: duikt er een privé-IP op buiten je eigen netwerken (UniFi, de internetkant van je gateway en `subnets`), dan krijg je één melding per netwerk, met waar het gezien is. Denk aan een extra router, een apparaat met een eigen hotspot of een VPN. Op het dashboard staat een blok **Onbekende netwerken** zolang er een is.
