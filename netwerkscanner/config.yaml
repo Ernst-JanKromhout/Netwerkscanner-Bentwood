@@ -1,5 +1,5 @@
 name: Netwerkscanner
-version: "0.2.2"
+version: "0.2.3"
 slug: netwerkscanner
 description: Scant het thuisnetwerk, houdt historie bij en meldt nieuwe apparaten en poorten.
 url: https://github.com/Ernst-JanKromhout/Netwerkscanner-Bentwood

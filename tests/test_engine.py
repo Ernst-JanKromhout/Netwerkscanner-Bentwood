@@ -140,7 +140,7 @@ def test_new_device_with_hidden_vendor_is_flagged(setup):
     title, message, _ = ha.pushes[-1]
     assert title == "Nieuw apparaat op je netwerk"
     assert "Fabrikant verborgen: prefix 24:FD:FA" in message
-    assert "NXP i.MX" in message
+    assert "reMarkable Paper Pro" in message
     assert "tweede melding" in message
     assert db.device(FERRARI)["vendor"] is None
     detail = db.events_between("2000", "3000")[-1]["detail"]

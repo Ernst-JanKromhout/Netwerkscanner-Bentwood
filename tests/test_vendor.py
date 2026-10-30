@@ -43,7 +43,9 @@ def test_missing_list_does_not_raise_false_alarm(tmp_path):
 
 
 def test_hostname_hints():
-    assert "NXP i.MX" in hostname_hint("imx8mm-ferrari")
+    assert "reMarkable Paper Pro" in hostname_hint("imx8mm-ferrari")
+    assert "NXP i.MX" in hostname_hint("imx8mp-gateway")
+    assert "reMarkable" in hostname_hint("reMarkable")
     assert "ESP" in hostname_hint("esp32-keuken")
     assert hostname_hint("macbook-ernst-jan") is None
 
@@ -51,4 +53,4 @@ def test_hostname_hints():
 def test_describe_vendor_for_tonights_device():
     lines = describe_vendor("24:fd:fa:10:d2:db", identify("24:fd:fa:10:d2:db", None, TABLE), "imx8mm-ferrari")
     assert lines[0].startswith("⚠️ Fabrikant verborgen: prefix 24:FD:FA")
-    assert "NXP i.MX" in lines[1]
+    assert "reMarkable Paper Pro" in lines[1]
